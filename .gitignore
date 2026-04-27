@@ -222,3 +222,7 @@ CLAUDE.md
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+frontend/.vite/
+.claude/settings.local.json
+.gitignore
+skills-lock.json
