@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -41,7 +41,7 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
     )
 
     access_token = auth_service.create_access_token(user.id)
-    response = RedirectResponse(url=settings.frontend_url)
+    response = RedirectResponse(url=f"{settings.frontend_url}/dashboard")
     response.set_cookie(
         key=_COOKIE,
         value=access_token,
@@ -60,6 +60,6 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
 
 @router.post("/logout")
 async def logout():
-    response = RedirectResponse(url=settings.frontend_url)
-    response.delete_cookie(key=_COOKIE)
+    response = JSONResponse(content={"ok": True})
+    response.delete_cookie(key=_COOKIE, httponly=True, samesite="lax")
     return response
