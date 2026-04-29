@@ -60,7 +60,7 @@ export default function Home() {
         Powered by Modrinth
       </div>
 
-      <h1 className="mt-6 text-5xl font-bold tracking-tight">
+      <h1 className="mt-6 text-3xl sm:text-5xl font-bold tracking-tight">
         Minecraft mod management,{' '}
         <span className="text-emerald-400">simplified.</span>
       </h1>

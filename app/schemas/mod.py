@@ -7,6 +7,9 @@ class ModSearchRequest(BaseModel):
     query: str
     game_version: str | None = None
     loader: str | None = None
+    category: str | None = None
+    side: str | None = None
+    index: str | None = None
     limit: int = 20
     offset: int = 0
 
@@ -23,9 +26,8 @@ class ModSearchHit(BaseModel):
     client_side: str
     server_side: str
     latest_version: str | None = None
-    game_versions: list[str]
-    loaders: list[str]
-    categories: list[str]
+    versions: list[str] = []
+    categories: list[str] = []
 
 
 class ModSearchResponse(BaseModel):

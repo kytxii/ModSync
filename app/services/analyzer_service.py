@@ -15,8 +15,8 @@ def _extract_project_id(url: str) -> str | None:
 def _make_unknown(name: str) -> ModResult:
     return ModResult(
         filename=name, sha512="", found=False, project_id=None,
-        project_name=None, version_number=None, game_versions=[],
-        loaders=[], client_side=None, server_side=None,
+        project_name=None, icon_url=None, version_number=None, game_versions=[],
+        loaders=[], categories=[], client_side=None, server_side=None,
     )
 
 
@@ -46,17 +46,19 @@ async def _lookup_hashes(hash_to_filename: dict[str, str]) -> AnalyzerResponse:
                 filename=filename, sha512=sha512, found=True,
                 project_id=version["project_id"],
                 project_name=project.get("title"),
+                icon_url=project.get("icon_url"),
                 version_number=version.get("version_number"),
                 game_versions=version.get("game_versions", []),
                 loaders=version.get("loaders", []),
+                categories=project.get("categories", []),
                 client_side=project.get("client_side"),
                 server_side=project.get("server_side"),
             ))
         else:
             results.append(ModResult(
                 filename=filename, sha512=sha512, found=False, project_id=None,
-                project_name=None, version_number=None, game_versions=[],
-                loaders=[], client_side=None, server_side=None,
+                project_name=None, icon_url=None, version_number=None, game_versions=[],
+                loaders=[], categories=[], client_side=None, server_side=None,
             ))
 
     return _summary(results)
@@ -106,9 +108,11 @@ async def analyze_modlist(mods: list[ModlistMod]) -> AnalyzerResponse:
             filename=mod.name, sha512="", found=True,
             project_id=project["id"],
             project_name=project.get("title"),
+            icon_url=project.get("icon_url"),
             version_number=mod.version,
             game_versions=project.get("game_versions", []),
             loaders=project.get("loaders", []),
+            categories=project.get("categories", []),
             client_side=project.get("client_side"),
             server_side=project.get("server_side"),
         ))

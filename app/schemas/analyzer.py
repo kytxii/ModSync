@@ -9,9 +9,11 @@ class ModResult(BaseModel):
     found: bool
     project_id: str | None
     project_name: str | None
+    icon_url: str | None
     version_number: str | None
     game_versions: list[str]
     loaders: list[str]
+    categories: list[str]
     client_side: str | None
     server_side: str | None
 

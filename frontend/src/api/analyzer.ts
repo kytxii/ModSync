@@ -6,9 +6,11 @@ export interface ModResult {
   found: boolean
   project_id: string | null
   project_name: string | null
+  icon_url: string | null
   version_number: string | null
   game_versions: string[]
   loaders: string[]
+  categories: string[]
   client_side: string | null
   server_side: string | null
 }
@@ -30,9 +32,7 @@ export function getSide(r: ModResult): string {
 export async function uploadMods(files: File[]): Promise<AnalyzerResponse> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
-  const { data } = await client.post<AnalyzerResponse>('/analyzer/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  const { data } = await client.post<AnalyzerResponse>('/analyzer/upload', form)
   return data
 }
 
@@ -41,8 +41,3 @@ export async function importPrismJson(json: object): Promise<AnalyzerResponse> {
   return data
 }
 
-export async function importModlist(json: unknown): Promise<AnalyzerResponse> {
-  const payload = Array.isArray(json) ? json : (json as Record<string, unknown>).mods ?? json
-  const { data } = await client.post<AnalyzerResponse>('/analyzer/import-modlist', payload)
-  return data
-}

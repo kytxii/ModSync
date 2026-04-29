@@ -218,7 +218,14 @@ __marimo__/
 .streamlit/secrets.toml
 CLAUDE.md
 
+# Graphify output
+graphify-out/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+frontend/.vite/
+.claude/settings.local.json
+.gitignore
+skills-lock.json
