@@ -2,9 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { listModpacks } from '../api/modpacks'
-import type { ModpackSummary } from '../api/modpacks'
 
-function ModpackRow({ modpack }: { modpack: ModpackSummary }) {
+function ModpackRow({ modpack }) {
   const navigate = useNavigate()
   return (
     <tr

@@ -4,18 +4,14 @@ import {
   uploadMods,
   importPrismJson,
   getSide,
-  type AnalyzerResponse,
-  type ModResult,
 } from "../api/analyzer";
 import SideBadge from "../components/SideBadge";
 
-type Mode = "upload" | "prism";
-
 const PAGE_SIZE = 10;
 const MOD_COLORS = ["bg-emerald-700","bg-blue-700","bg-violet-700","bg-orange-700","bg-pink-700","bg-teal-700"];
-function modColor(name: string) { return MOD_COLORS[name.charCodeAt(0) % MOD_COLORS.length]; }
+function modColor(name) { return MOD_COLORS[name.charCodeAt(0) % MOD_COLORS.length]; }
 
-function ResultsTable({ data }: { data: AnalyzerResponse }) {
+function ResultsTable({ data }) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(data.results.length / PAGE_SIZE));
   const pageResults = data.results.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -74,7 +70,7 @@ function ResultsTable({ data }: { data: AnalyzerResponse }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/50">
-            {pageResults.map((r: ModResult) => {
+            {pageResults.map((r) => {
               const displayName = r.project_name ?? r.filename;
               const side = getSide(r);
               return (
@@ -157,11 +153,11 @@ function ResultsTable({ data }: { data: AnalyzerResponse }) {
 }
 
 export default function Analyzer() {
-  const [mode, setMode] = useState<Mode>("upload");
-  const [files, setFiles] = useState<File[]>([]);
+  const [mode, setMode] = useState("upload");
+  const [files, setFiles] = useState([]);
   const [json, setJson] = useState("");
   const [dragging, setDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef(null);
 
   const { mutate, data, isPending, error, reset } = useMutation({
     mutationFn: () => {
@@ -170,25 +166,25 @@ export default function Analyzer() {
     },
   });
 
-  function handleDrop(e: React.DragEvent) {
+  function handleDrop(e) {
     e.preventDefault();
     setDragging(false);
     const dropped = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith(".jar"));
     setFiles(prev => [...prev, ...dropped]);
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileInput(e) {
     if (!e.target.files) return;
     const selected = Array.from(e.target.files).filter(f => f.name.endsWith(".jar"));
     setFiles(prev => [...prev, ...selected]);
     e.target.value = "";
   }
 
-  function removeFile(name: string) {
+  function removeFile(name) {
     setFiles(prev => prev.filter(f => f.name !== name));
   }
 
-  function switchMode(m: Mode) {
+  function switchMode(m) {
     setMode(m);
     reset();
     setFiles([]);
@@ -206,7 +202,7 @@ export default function Analyzer() {
 
       {/* Mode toggle */}
       <div className="mt-6 inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-1">
-        {([{ id: "upload", label: "Upload mod files" }, { id: "prism", label: "Prism Launcher JSON" }] as { id: Mode; label: string }[]).map(({ id, label }) => (
+        {[{ id: "upload", label: "Upload mod files" }, { id: "prism", label: "Prism Launcher JSON" }].map(({ id, label }) => (
           <button
             key={id}
             onClick={() => switchMode(id)}
