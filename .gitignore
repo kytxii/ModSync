@@ -221,6 +221,9 @@ CLAUDE.md
 # Graphify output
 graphify-out/
 
+# Local issue tracker
+.scratch/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
@@ -229,3 +232,6 @@ frontend/.vite/
 .claude/settings.local.json
 .gitignore
 skills-lock.json
+docs/agents/domain.md
+docs/agents/triage-labels.md
+docs/agents/issue-tracker.md
