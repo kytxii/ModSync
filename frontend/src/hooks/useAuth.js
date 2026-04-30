@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { getMe, type User } from '../api/auth'
+import { getMe } from '../api/auth'
 
 export function useAuth() {
-  const { data: user = null, isLoading } = useQuery<User | null, Error>({
+  const { data: user = null, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: getMe,
     retry: false,

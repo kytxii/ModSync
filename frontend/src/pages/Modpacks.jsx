@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { listModpacks, createModpack, deleteModpack, getSharedModpack, importModpack, type Modpack, type ModpackSummary } from '../api/modpacks'
+import { listModpacks, createModpack, deleteModpack, getSharedModpack, importModpack } from '../api/modpacks'
 
 const ICON_PALETTE = [
   '#059669','#10b981','#14b8a6','#06b6d4',
@@ -10,7 +10,7 @@ const ICON_PALETTE = [
   '#f59e0b','#84cc16','#22c55e','#64748b',
 ]
 
-function defaultIconColor(name: string): string {
+function defaultIconColor(name) {
   return ICON_PALETTE[name.charCodeAt(0) % ICON_PALETTE.length]
 }
 
@@ -25,12 +25,7 @@ const MC_VERSIONS = [
   '1.16.5',
 ]
 
-function ModpackAvatar({ name, icon_color, icon_letter, icon_url }: {
-  name: string
-  icon_color?: string | null
-  icon_letter?: string | null
-  icon_url?: string | null
-}) {
+function ModpackAvatar({ name, icon_color, icon_letter, icon_url }) {
   const color = icon_color ?? defaultIconColor(name)
   const letter = icon_letter ?? name.trim()[0]?.toUpperCase() ?? '?'
   return (
@@ -49,13 +44,9 @@ function ModpackAvatar({ name, icon_color, icon_letter, icon_url }: {
   )
 }
 
-function CreatePanel({ open, onClose, onCreated }: {
-  open: boolean
-  onClose: () => void
-  onCreated: (id: number) => void
-}) {
+function CreatePanel({ open, onClose, onCreated }) {
   const queryClient = useQueryClient()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef(null)
   const [name, setName] = useState('')
   const [gameVersion, setGameVersion] = useState('1.21.1')
   const [loader, setLoader] = useState('fabric')
@@ -70,7 +61,7 @@ function CreatePanel({ open, onClose, onCreated }: {
   }, [open])
 
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
+    function handleKey(e) {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', handleKey)
@@ -159,14 +150,14 @@ function CreatePanel({ open, onClose, onCreated }: {
   )
 }
 
-function ImportPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ImportPanel({ open, onClose }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [isSync, setIsSync] = useState(false)
-  const [preview, setPreview] = useState<Modpack | null>(null)
+  const [preview, setPreview] = useState(null)
   const [lookupError, setLookupError] = useState(false)
   const [looking, setLooking] = useState(false)
 
@@ -175,7 +166,7 @@ function ImportPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
   }, [open])
 
   useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
+    function handleKey(e) {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', handleKey)
@@ -315,11 +306,7 @@ function ImportPanel({ open, onClose }: { open: boolean; onClose: () => void }) 
   )
 }
 
-function ModpackCard({ modpack, onDelete, isNew = false }: {
-  modpack: ModpackSummary
-  onDelete: () => void
-  isNew?: boolean
-}) {
+function ModpackCard({ modpack, onDelete, isNew = false }) {
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -408,10 +395,10 @@ function ModpackCard({ modpack, onDelete, isNew = false }: {
 export default function Modpacks() {
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [newModpackId, setNewModpackId] = useState<number | null>(null)
+  const [newModpackId, setNewModpackId] = useState(null)
   const queryClient = useQueryClient()
 
-  function handleCreated(id: number) {
+  function handleCreated(id) {
     setNewModpackId(id)
     setTimeout(() => setNewModpackId(null), 4000)
   }
@@ -425,8 +412,8 @@ export default function Modpacks() {
     mutationFn: deleteModpack,
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['modpacks'] })
-      const prev = queryClient.getQueryData<ModpackSummary[]>(['modpacks'])
-      queryClient.setQueryData<ModpackSummary[]>(['modpacks'], (old) =>
+      const prev = queryClient.getQueryData(['modpacks'])
+      queryClient.setQueryData(['modpacks'], (old) =>
         old?.filter((m) => m.id !== id) ?? []
       )
       return { prev }

@@ -8,23 +8,18 @@ import {
   exportMrpack,
   updateModpack,
   deleteModpack,
-  type Modpack,
-  type ModpackMod,
-  type ModpackSummary,
-  type UpdateModpackInput,
 } from "../api/modpacks";
 
 import {
   searchMods,
   getLatestVersion,
   getCategories,
-  type ModSearchHit,
 } from "../api/mods";
 import SideBadge from "../components/SideBadge";
 
 const PAGE_SIZE = 10;
 
-const LOADERS = ['fabric', 'forge', 'quilt', 'neoforge'] as const;
+const LOADERS = ['fabric', 'forge', 'quilt', 'neoforge'];
 const MC_VERSIONS = [
   '1.21.4', '1.21.3', '1.21.1', '1.21',
   '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
@@ -81,32 +76,32 @@ const CATEGORY_PRIORITY = [
   "misc",
 ];
 
-function categoryRank(c: string): number {
+function categoryRank(c) {
   const i = CATEGORY_PRIORITY.indexOf(c);
   return i === -1 ? 999 : i;
 }
 
-function modColor(name: string) {
+function modColor(name) {
   return MOD_COLORS[name.charCodeAt(0) % MOD_COLORS.length];
 }
-function fmtDownloads(n: number) {
+function fmtDownloads(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return String(n);
 }
-function deriveSide(hit: ModSearchHit): string {
+function deriveSide(hit) {
   if (hit.server_side === "unsupported") return "client";
   if (hit.client_side === "unsupported") return "server";
   return "both";
 }
-function displayCategories(categories: string[]): string[] {
+function displayCategories(categories) {
   return categories
     .filter((c) => !HIDDEN_CATEGORIES.has(c))
     .sort((a, b) => categoryRank(a) - categoryRank(b))
     .slice(0, 2);
 }
 
-function VersionTypeBadge({ type }: { type: string | null }) {
+function VersionTypeBadge({ type }) {
   if (!type || type === "release") return null;
   return (
     <span
@@ -121,7 +116,7 @@ function VersionTypeBadge({ type }: { type: string | null }) {
   );
 }
 
-function Chevron({ open }: { open: boolean }) {
+function Chevron({ open }) {
   return (
     <svg
       width="12"
@@ -149,29 +144,17 @@ function AddModsPanel({
   existingIds,
   cacheKey,
   onClose,
-}: {
-  open: boolean;
-  modpackId: number;
-  gameVersion: string;
-  loader: string;
-  existingIds: Set<string>;
-  cacheKey: string;
-  onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [selected, setSelected] = useState(new Set());
+  const [activeCategory, setActiveCategory] = useState(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [activeSide, setActiveSide] = useState<
-    "client" | "server" | "both" | null
-  >(null);
+  const [activeSide, setActiveSide] = useState(null);
   const [sideOpen, setSideOpen] = useState(false);
-  const [sortIndex, setSortIndex] = useState<"relevance" | "downloads">(
-    "relevance",
-  );
+  const [sortIndex, setSortIndex] = useState("relevance");
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -183,7 +166,7 @@ function AddModsPanel({
   }, [query]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const handler = (e) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
@@ -226,7 +209,7 @@ function AddModsPanel({
 
   const hits = data?.hits ?? [];
 
-  function toggle(projectId: string) {
+  function toggle(projectId) {
     if (existingIds.has(projectId)) return;
     setSelected((prev) => {
       const next = new Set(prev);
@@ -297,7 +280,7 @@ function AddModsPanel({
         )}
         {/* Sort toggle */}
         <div className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-700 text-xs">
-          {(["relevance", "downloads"] as const).map((opt) => (
+          {["relevance", "downloads"].map((opt) => (
             <button
               key={opt}
               onClick={() => setSortIndex(opt)}
@@ -399,7 +382,7 @@ function AddModsPanel({
           </button>
           {sideOpen && (
             <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
-              {(["client", "server", "both"] as const).map((s) => (
+              {["client", "server", "both"].map((s) => (
                 <button
                   key={s}
                   onClick={() =>
@@ -563,26 +546,20 @@ const ICON_PALETTE = [
   "#64748b",
 ];
 
-function defaultIconColor(name: string): string {
+function defaultIconColor(name) {
   return ICON_PALETTE[name.charCodeAt(0) % ICON_PALETTE.length];
 }
 
-function ModpackIconWidget({
-  modpack,
-  onSave,
-}: {
-  modpack: Modpack;
-  onSave: (input: UpdateModpackInput) => void;
-}) {
+function ModpackIconWidget({ modpack, onSave }) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"color" | "image">("color");
+  const [tab, setTab] = useState("color");
   const [letterInput, setLetterInput] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef(null);
 
   useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node))
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target))
         setOpen(false);
     }
     document.addEventListener("mousedown", handler);
@@ -595,12 +572,12 @@ function ModpackIconWidget({
     setOpen(true);
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const base64 = ev.target?.result as string;
+      const base64 = ev.target?.result;
       onSave({ icon_url: base64, icon_color: null, icon_letter: null });
       setOpen(false);
     };
@@ -654,7 +631,7 @@ function ModpackIconWidget({
         <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50">
           {/* Tabs */}
           <div className="flex border-b border-zinc-800">
-            {(["color", "image"] as const).map((t) => (
+            {["color", "image"].map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -792,11 +769,9 @@ function ModpackIconWidget({
   );
 }
 
-type ViewMode = "list" | "grid";
-
-function groupByCategory(mods: ModpackMod[]): [string, ModpackMod[]][] {
-  const map = new Map<string, ModpackMod[]>();
-  const seen = new Set<string>();
+function groupByCategory(mods) {
+  const map = new Map();
+  const seen = new Set();
   for (const mod of mods) {
     if (seen.has(mod.modrinth_project_id)) continue;
     seen.add(mod.modrinth_project_id);
@@ -874,19 +849,12 @@ function ModTable({
   loading,
   cacheKey,
   failedProjectIds,
-}: {
-  modpackId: number;
-  mods: ModpackMod[];
-  readOnly: boolean;
-  loading: boolean;
-  cacheKey: string;
-  failedProjectIds?: Set<string>;
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [editMode, setEditMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [viewMode, setViewMode] = useState("list");
 
   const totalPages = Math.max(1, Math.ceil(mods.length / PAGE_SIZE));
   const pageMods = mods.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -901,7 +869,7 @@ function ModTable({
     },
   });
 
-  function toggleSelect(id: number) {
+  function toggleSelect(id) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -914,7 +882,7 @@ function ModTable({
     setSelectedIds(new Set());
   }
 
-  function switchView(mode: ViewMode) {
+  function switchView(mode) {
     if (mode === "grid") exitEdit();
     setViewMode(mode);
   }
@@ -957,12 +925,10 @@ function ModTable({
           )}
           {/* View toggle */}
           <div className="flex overflow-hidden rounded-md border border-zinc-700">
-            {(
-              [
-                ["list", <IconList />],
-                ["grid", <IconGrid />],
-              ] as [ViewMode, React.ReactNode][]
-            ).map(([mode, icon]) => (
+            {[
+              ["list", <IconList />],
+              ["grid", <IconGrid />],
+            ].map(([mode, icon]) => (
               <button
                 key={mode}
                 onClick={() => switchView(mode)}
@@ -1300,7 +1266,7 @@ function ModTable({
 }
 
 export default function ModpackBuilder() {
-  const { code } = useParams<{ code: string }>();
+  const { code } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
@@ -1312,19 +1278,14 @@ export default function ModpackBuilder() {
   const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [needsRelink, setNeedsRelink] = useState(false);
   const [showFailedMods, setShowFailedMods] = useState(false);
-  const [fixStatus, setFixStatus] = useState<{
-    done: boolean;
-    total: number;
-    failed: number;
-    failedMods: Array<{ id: number; name: string; modrinth_project_id: string; icon_url: string | null }>;
-  } | null>(null);
-  const settingsRef = useRef<HTMLDivElement>(null);
+  const [fixStatus, setFixStatus] = useState(null);
+  const settingsRef = useRef(null);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function handleClick(e) {
       if (
         settingsRef.current &&
-        !settingsRef.current.contains(e.target as Node)
+        !settingsRef.current.contains(e.target)
       ) {
         setSettingsOpen(false);
         setDeleteConfirming(false);
@@ -1340,19 +1301,19 @@ export default function ModpackBuilder() {
     isPending,
   } = useQuery({
     queryKey: ["modpack", code],
-    queryFn: () => getModpackByCode(code!),
+    queryFn: () => getModpackByCode(code),
     placeholderData: () => {
-      const list = queryClient.getQueryData<ModpackSummary[]>(["modpacks"]);
+      const list = queryClient.getQueryData(["modpacks"]);
       const summary = list?.find((m) => m.share_code === code);
-      return summary ? ({ ...summary, mods: [] } as Modpack) : undefined;
+      return summary ? ({ ...summary, mods: [] }) : undefined;
     },
   });
 
   const { mutate: saveModpack } = useMutation({
-    mutationFn: (input: UpdateModpackInput) =>
-      updateModpack(modpack!.id, input),
+    mutationFn: (input) =>
+      updateModpack(modpack.id, input),
     onMutate: (input) => {
-      queryClient.setQueryData(["modpack", code], (old: Modpack) => ({
+      queryClient.setQueryData(["modpack", code], (old) => ({
         ...old,
         ...input,
       }));
@@ -1369,7 +1330,7 @@ export default function ModpackBuilder() {
   });
 
   const { mutate: doDelete, isPending: deleting } = useMutation({
-    mutationFn: () => deleteModpack(modpack!.id),
+    mutationFn: () => deleteModpack(modpack.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["modpacks"] });
       navigate("/modpacks");
@@ -1378,16 +1339,16 @@ export default function ModpackBuilder() {
 
   const { mutate: doFixMods, isPending: fixing } = useMutation({
     mutationFn: async () => {
-      const mods = modpack!.mods;
+      const mods = modpack.mods;
       const results = await Promise.allSettled(
         mods.map(async (mod) => {
           const ver = await getLatestVersion(
             mod.modrinth_project_id,
-            modpack!.game_version,
-            modpack!.loader,
+            modpack.game_version,
+            modpack.loader,
           );
-          await removeMod(modpack!.id, mod.id);
-          await addMod(modpack!.id, {
+          await removeMod(modpack.id, mod.id);
+          await addMod(modpack.id, {
             modrinth_project_id: mod.modrinth_project_id,
             version_id: ver.version_id,
             name: mod.name,
@@ -1412,7 +1373,7 @@ export default function ModpackBuilder() {
   });
 
   const { mutate: removeFailedMod } = useMutation({
-    mutationFn: (modId: number) => removeMod(modpack!.id, modId),
+    mutationFn: (modId) => removeMod(modpack.id, modId),
     onSuccess: (_, modId) => {
       queryClient.invalidateQueries({ queryKey: ["modpack", code] });
       setFixStatus((prev) =>
@@ -1428,12 +1389,12 @@ export default function ModpackBuilder() {
   });
 
   const { mutate: doExport, isPending: exporting } = useMutation({
-    mutationFn: () => exportMrpack(modpack!.id),
+    mutationFn: () => exportMrpack(modpack.id),
     onSuccess: (blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${modpack!.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`;
+      a.download = `${modpack.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     },
@@ -1451,12 +1412,12 @@ export default function ModpackBuilder() {
   if (!modpack) return null;
 
   const existingIds = new Set(modpack.mods.map((m) => m.modrinth_project_id));
-  const failedProjectIds: Set<string> | undefined = fixStatus?.failedMods.length
+  const failedProjectIds = fixStatus?.failedMods.length
     ? new Set(fixStatus.failedMods.map((m) => m.modrinth_project_id))
     : undefined;
 
   function handleCopy() {
-    navigator.clipboard.writeText(modpack!.share_code);
+    navigator.clipboard.writeText(modpack.share_code);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -1803,7 +1764,7 @@ export default function ModpackBuilder() {
               gameVersion={modpack.game_version}
               loader={modpack.loader}
               existingIds={existingIds}
-              cacheKey={code!}
+              cacheKey={code}
               onClose={() => setShowAddMods(false)}
             />
           </div>
@@ -1978,7 +1939,7 @@ export default function ModpackBuilder() {
           mods={modpack.mods}
           readOnly={!!modpack.source_share_code}
           loading={isPlaceholderData}
-          cacheKey={code!}
+          cacheKey={code}
           failedProjectIds={failedProjectIds}
         />
       </div>

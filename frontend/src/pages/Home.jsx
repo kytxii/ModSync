@@ -17,12 +17,12 @@ const features = [
   },
 ]
 
-function FeatureCard({ title, description }: { title: string; description: string }) {
-  const ref = useRef<HTMLDivElement>(null)
+function FeatureCard({ title, description }) {
+  const ref = useRef(null)
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [hovered, setHovered] = useState(false)
 
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+  function handleMouseMove(e) {
     if (!ref.current) return
     const rect = ref.current.getBoundingClientRect()
     setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
