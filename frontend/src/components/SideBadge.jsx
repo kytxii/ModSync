@@ -1,6 +1,6 @@
 const styles = {
-  client: 'bg-blue-950 text-blue-400 border-blue-900',
-  server: 'bg-orange-950 text-orange-400 border-orange-900',
+  client: 'bg-blue-950/60 text-blue-300/80 border-blue-900/50',
+  server: 'bg-violet-950/60 text-violet-300/80 border-violet-900/50',
   both: 'bg-emerald-950 text-emerald-400 border-emerald-900',
 }
 

@@ -10,11 +10,16 @@ export function getSide(r) {
 export async function uploadMods(files) {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
-  const { data } = await client.post('/analyzer/upload', form)
+  const { data } = await client.post('/analyzer/upload', form, { headers: { 'Content-Type': undefined } })
   return data
 }
 
-export async function importPrismJson(json) {
-  const { data } = await client.post('/analyzer/import-json', json)
+export async function importModlist(mods) {
+  const { data } = await client.post('/analyzer/import-modlist', mods)
+  return data
+}
+
+export async function createModpackFromAnalysis(payload) {
+  const { data } = await client.post('/analyzer/create-modpack', payload)
   return data
 }

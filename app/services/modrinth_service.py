@@ -97,6 +97,31 @@ async def get_latest_version(project_id: str, game_version: str, loader: str) ->
     return versions[0] if versions else None
 
 
+async def get_latest_versions_batch(
+    queries: list[tuple[str, str, str]],
+    concurrency: int = 10,
+) -> list[dict | None]:
+    import asyncio
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _one(client: httpx.AsyncClient, project_id: str, game_version: str, loader: str) -> dict | None:
+        async with sem:
+            try:
+                params = {
+                    "game_versions": json.dumps([game_version]),
+                    "loaders": json.dumps([loader]),
+                }
+                r = await client.get(f"{MODRINTH_BASE_URL}/project/{project_id}/version", params=params)
+                r.raise_for_status()
+                versions = r.json()
+                return versions[0] if versions else None
+            except Exception:
+                return None
+
+    async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0) as client:
+        return list(await asyncio.gather(*[_one(client, *q) for q in queries]))
+
+
 async def get_versions_by_hashes(hashes: list[str]) -> dict[str, dict]:
     async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0) as client:
         response = await client.post(
