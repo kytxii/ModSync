@@ -7,3 +7,21 @@ html {
      0.8333vw = 16px at 1920px (1080p), ~21px at 2560px (1440p), capped at 24px for 4K+ */
   font-size: clamp(14px, 0.8333vw, 24px);
 }
+
+.scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+.scrollbar-dark::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}

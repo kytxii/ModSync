@@ -130,6 +130,23 @@ async def add_mod(db: AsyncSession, modpack: Modpack, data: ModpackModCreate) ->
     return mod
 
 
+async def bulk_add_mods(db: AsyncSession, modpack: Modpack, mods: list[ModpackModCreate]) -> None:
+    for data in mods:
+        db.add(ModpackMod(
+            modpack_id=modpack.id,
+            modrinth_project_id=data.modrinth_project_id,
+            version_id=data.version_id,
+            name=data.name,
+            side=ModSide(data.side),
+            icon_url=data.icon_url,
+            version_number=data.version_number,
+            version_type=data.version_type,
+            filename=data.filename,
+            categories=data.categories or [],
+        ))
+    await db.commit()
+
+
 async def remove_mod(db: AsyncSession, modpack_id: int, mod_id: int, user_id: int) -> bool:
     result = await db.execute(
         select(ModpackMod)

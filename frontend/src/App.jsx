@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Analyzer from './pages/Analyzer'
 import Modpacks from './pages/Modpacks'
 import ModpackBuilder from './pages/ModpackBuilder'
+import { AnalyzerProvider } from './context/AnalyzerContext'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <AnalyzerProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -37,6 +39,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </AnalyzerProvider>
     </QueryClientProvider>
   )
 }
