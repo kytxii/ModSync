@@ -39,16 +39,41 @@ export async function addMod(modpackId, input) {
   return data
 }
 
+export async function addModsBulk(modpackId, mods) {
+  const { data } = await client.post(`/modpacks/${modpackId}/mods/bulk`, mods)
+  return data
+}
+
 export async function removeMod(modpackId, modId) {
   await client.delete(`/modpacks/${modpackId}/mods/${modId}`)
 }
 
-export async function exportMrpack(id) {
-  const { data } = await client.get(`/modpacks/${id}/export`, { responseType: 'blob' })
-  return data
+export async function exportModpack(id) {
+  const response = await client.get(`/modpacks/${id}/export`, { responseType: 'blob' })
+  return { blob: response.data, skipped: response.headers['x-export-skipped'] || '' }
 }
 
 export async function importModpack(code, name, isSync) {
   const { data } = await client.post('/modpacks/import', { code, name, is_synced: isSync })
+  return data
+}
+
+export async function getModpackChangelog(modpackId) {
+  const { data } = await client.get(`/modpacks/${modpackId}/changelog`)
+  return data
+}
+
+export async function getSharedModpackChangelog(code) {
+  const { data } = await client.get(`/modpacks/share/${code}/changelog`)
+  return data
+}
+
+export async function getModVersions(modpackId, modId) {
+  const { data } = await client.get(`/modpacks/${modpackId}/mods/${modId}/versions`)
+  return data
+}
+
+export async function updateModVersion(modpackId, modId, input) {
+  const { data } = await client.patch(`/modpacks/${modpackId}/mods/${modId}`, input)
   return data
 }

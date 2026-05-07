@@ -1,31 +1,45 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
   getModpackByCode,
   addMod,
+  addModsBulk,
   removeMod,
-  exportMrpack,
+  exportModpack,
   updateModpack,
   deleteModpack,
+  getModpackChangelog,
+  getSharedModpackChangelog,
+  getModVersions,
+  updateModVersion,
 } from "../api/modpacks";
 
-import {
-  searchMods,
-  getLatestVersion,
-  getCategories,
-} from "../api/mods";
+import { searchMods, getLatestVersion, getCategories } from "../api/mods";
 import SideBadge from "../components/SideBadge";
+import SortIcon from "../components/SortIcon";
 
 const PAGE_SIZE = 10;
 
-const LOADERS = ['fabric', 'forge', 'quilt', 'neoforge'];
+const LOADERS = ["fabric", "forge", "quilt", "neoforge"];
 const MC_VERSIONS = [
-  '1.21.4', '1.21.3', '1.21.1', '1.21',
-  '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
-  '1.19.4', '1.19.2', '1.19',
-  '1.18.2', '1.18',
-  '1.17.1', '1.16.5',
+  "1.21.4",
+  "1.21.3",
+  "1.21.1",
+  "1.21",
+  "1.20.6",
+  "1.20.4",
+  "1.20.2",
+  "1.20.1",
+  "1.20",
+  "1.19.4",
+  "1.19.2",
+  "1.19",
+  "1.18.2",
+  "1.18",
+  "1.17.1",
+  "1.16.5",
 ];
 
 const HIDDEN_CATEGORIES = new Set([
@@ -52,29 +66,41 @@ const MOD_COLORS = [
   "bg-teal-700",
 ];
 
-// Most meaningful/specific categories first — determines grid table grouping and badge order
+// Most meaningful/specific categories first —" determines grid table grouping and badge order
 const CATEGORY_PRIORITY = [
   "library",
+  "optimization",
   "game-mechanics",
   "magic",
-  "adventure",
+  "worldgen",
   "technology",
+  "equipment",
   "decoration",
   "food",
-  "worldgen",
   "mobs",
-  "equipment",
+  "utility",
   "transportation",
   "social",
   "economy",
   "minigame",
   "storage",
   "management",
-  "utility",
-  "optimization",
+  "adventure",
   "datapack",
   "misc",
 ];
+
+function relativeTime(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
 
 function categoryRank(c) {
   const i = CATEGORY_PRIORITY.indexOf(c);
@@ -136,6 +162,152 @@ function Chevron({ open }) {
   );
 }
 
+function Toast({ toast }) {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let raf1, raf2;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+  const active = entered && !toast.fading;
+  return (
+    <div
+      className={`overflow-hidden transition-all duration-300 ${active ? "max-h-10 mb-2.5" : "max-h-0 mb-0 delay-300"}`}
+    >
+      <div
+        className={`flex items-center gap-2.5 transition-all duration-300 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"}`}
+      >
+        {toast.icon_url ? (
+          <img
+            src={toast.icon_url}
+            alt=""
+            className="h-5 w-5 shrink-0 rounded object-cover"
+          />
+        ) : (
+          <div
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white ${modColor(toast.name)}`}
+          >
+            {toast.name[0].toUpperCase()}
+          </div>
+        )}
+        <span className="text-sm text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
+          {toast.name} <span className="text-zinc-500">added</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function VersionToast({ toast, onDismiss }) {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let raf1, raf2;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+  const active = entered && !toast.fading;
+  return (
+    <div
+      className={`overflow-hidden transition-all duration-300 ${active ? "max-h-40 mb-2.5" : "max-h-0 mb-0 delay-300"}`}
+    >
+      <div
+        className={`w-80 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 shadow-xl transition-all duration-300 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"}`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {toast.icon_url ? (
+              <img
+                src={toast.icon_url}
+                alt=""
+                className="h-5 w-5 shrink-0 rounded object-cover"
+              />
+            ) : (
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white ${modColor(toast.name)}`}
+              >
+                {toast.name[0].toUpperCase()}
+              </div>
+            )}
+            <span className="truncate text-sm font-medium text-white">
+              {toast.name}
+            </span>
+            <span className="shrink-0 text-xs text-zinc-500">updated</span>
+          </div>
+          <button
+            onClick={onDismiss}
+            className="shrink-0 text-zinc-600 transition-colors hover:text-zinc-400"
+            aria-label="Dismiss"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 2l8 8M10 2l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Version change block */}
+        <div className="mt-2.5 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 text-xs">
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-2.5 py-1.5">
+            <span className="shrink-0 rounded bg-red-950 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-400">
+              old
+            </span>
+            <span className="truncate font-mono text-red-300/70 line-through decoration-red-500/30">
+              {toast.old_filename}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="shrink-0 rounded bg-emerald-950 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-400">
+              new
+            </span>
+            <span className="truncate font-mono font-semibold text-emerald-300">
+              {toast.new_filename}
+            </span>
+          </div>
+        </div>
+
+        {/* Download link */}
+        <a
+          href={toast.download_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300"
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download new file
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function AddModsPanel({
   open,
   modpackId,
@@ -144,6 +316,8 @@ function AddModsPanel({
   existingIds,
   cacheKey,
   onClose,
+  setMissingDeps,
+  addToasts,
 }) {
   const queryClient = useQueryClient();
   const inputRef = useRef(null);
@@ -151,6 +325,7 @@ function AddModsPanel({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [activeCategory, setActiveCategory] = useState(null);
+
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [activeSide, setActiveSide] = useState(null);
   const [sideOpen, setSideOpen] = useState(false);
@@ -173,6 +348,9 @@ function AddModsPanel({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  const sentinelRef = useRef(null);
+  const scrollRef = useRef(null);
+
   const { data: categoriesData } = useQuery({
     queryKey: ["mod-categories"],
     queryFn: getCategories,
@@ -181,7 +359,18 @@ function AddModsPanel({
 
   const categories = categoriesData ?? [];
 
-  const { data, isFetching } = useQuery({
+  const enabled =
+    debouncedQuery.length >= 2 ||
+    activeCategory !== null ||
+    activeSide !== null;
+
+  const {
+    data,
+    isFetching,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
     queryKey: [
       "mod-search",
       debouncedQuery,
@@ -191,7 +380,7 @@ function AddModsPanel({
       activeSide,
       sortIndex,
     ],
-    queryFn: () =>
+    queryFn: ({ pageParam = 0 }) =>
       searchMods({
         query: debouncedQuery,
         game_version: gameVersion,
@@ -200,14 +389,25 @@ function AddModsPanel({
         side: activeSide ?? undefined,
         index: sortIndex,
         limit: PAGE_SIZE,
+        offset: pageParam,
       }),
-    enabled:
-      debouncedQuery.length >= 2 ||
-      activeCategory !== null ||
-      activeSide !== null,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hits.length === PAGE_SIZE ? pages.length * PAGE_SIZE : undefined,
+    initialPageParam: 0,
+    enabled,
   });
 
-  const hits = data?.hits ?? [];
+  const hits = data?.pages.flatMap((p) => p.hits) ?? [];
+
+  useEffect(() => {
+    if (!sentinelRef.current || !hasNextPage || isFetchingNextPage) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) fetchNextPage(); },
+      { root: scrollRef.current, threshold: 0 },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   function toggle(projectId) {
     if (existingIds.has(projectId)) return;
@@ -219,311 +419,346 @@ function AddModsPanel({
   }
 
   const { mutate: addSelected, isPending: adding } = useMutation({
-    mutationFn: async () => {
-      const toAdd = hits.filter((h) => selected.has(h.project_id));
-      await Promise.all(
-        toAdd.map(async (hit) => {
-          const ver = await getLatestVersion(
-            hit.project_id,
-            gameVersion,
-            loader,
-          );
-          return addMod(modpackId, {
-            modrinth_project_id: hit.project_id,
-            version_id: ver.version_id,
-            name: hit.title,
-            side: deriveSide(hit),
-            icon_url: hit.icon_url,
-            version_number: ver.version_number,
-            version_type: ver.version_type,
-            filename: ver.filename,
-            categories: hit.categories,
-          });
-        }),
+    mutationFn: async (toAdd) => {
+      const result = await addModsBulk(
+        modpackId,
+        toAdd.map((hit) => ({
+          modrinth_project_id: hit.project_id,
+          name: hit.title,
+          side: deriveSide(hit),
+          icon_url: hit.icon_url ?? null,
+          categories: hit.categories ?? [],
+        })),
       );
+      return { missing: result.missing_dependencies };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
+    onMutate: (toAdd) => {
+      const previousData = queryClient.getQueryData(["modpack", cacheKey]);
+      queryClient.setQueryData(["modpack", cacheKey], (old) => {
+        if (!old) return old;
+        const tempMods = toAdd.map((hit) => ({
+          id: `temp-${hit.project_id}`,
+          modrinth_project_id: hit.project_id,
+          version_id: "",
+          name: hit.title,
+          side: deriveSide(hit),
+          icon_url: hit.icon_url ?? null,
+          version_number: null,
+          version_type: null,
+          filename: null,
+          categories: hit.categories ?? [],
+        }));
+        return { ...old, mods: [...old.mods, ...tempMods] };
+      });
       setSelected(new Set());
+      addToasts(
+        toAdd.map((h) => ({ name: h.title, icon_url: h.icon_url ?? null })),
+      );
+      return { previousData };
+    },
+    onSuccess: ({ missing }) => {
+      queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
+      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpackId] });
+      setMissingDeps(missing);
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousData)
+        queryClient.setQueryData(["modpack", cacheKey], ctx.previousData);
     },
   });
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950">
-      {/* Search bar */}
-      <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-4">
-        <svg
-          className="shrink-0 text-zinc-300"
-          width="17"
-          height="17"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search Modrinth…"
-          className="flex-1 bg-transparent text-base text-white placeholder-zinc-500 outline-none"
-        />
-        {isFetching && (
-          <span className="shrink-0 animate-pulse text-xs text-zinc-400">
-            Searching…
-          </span>
-        )}
-        {/* Sort toggle */}
-        <div className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-700 text-xs">
-          {["relevance", "downloads"].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setSortIndex(opt)}
-              className={`px-3 py-1.5 capitalize transition-colors ${
-                sortIndex === opt
-                  ? "bg-zinc-700 text-white"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-        {selected.size > 0 && (
-          <button
-            onClick={() => addSelected()}
-            disabled={adding}
-            className="shrink-0 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all hover:bg-emerald-400 active:scale-95 disabled:opacity-40"
+    <>
+      <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950">
+        {/* Search bar */}
+        <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-4">
+          <svg
+            className="shrink-0 text-zinc-300"
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            {adding
-              ? "Adding…"
-              : `Add ${selected.size} mod${selected.size !== 1 ? "s" : ""}`}
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M12 4L4 12M4 4l8 8"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
           </svg>
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-start border-b border-zinc-800">
-        <div className="flex-1 bg-zinc-900">
-          <button
-            onClick={() => setCategoriesOpen((o) => !o)}
-            className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                Categories
-              </span>
-              {activeCategory && (
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
-                  {activeCategory}
-                </span>
-              )}
-            </div>
-            <Chevron open={categoriesOpen} />
-          </button>
-          {categoriesOpen && categories.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
-              {categories.map((cat) => (
-                <button
-                  key={cat.name}
-                  onClick={() =>
-                    setActiveCategory((prev) =>
-                      prev === cat.name ? null : cat.name,
-                    )
-                  }
-                  className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
-                    activeCategory === cat.name
-                      ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search Modrinth…"
+            className="flex-1 bg-transparent text-base text-white placeholder-zinc-500 outline-none"
+          />
+          {isFetching && !isFetchingNextPage && (
+            <span className="shrink-0 animate-pulse text-xs text-zinc-400">
+              Searching…
+            </span>
           )}
-        </div>
-
-        <div className="w-px self-stretch bg-zinc-800" />
-        <div className="w-52 bg-zinc-900">
-          <button
-            onClick={() => setSideOpen((o) => !o)}
-            className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                Side
-              </span>
-              {activeSide && (
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
-                  {activeSide}
-                </span>
-              )}
-            </div>
-            <Chevron open={sideOpen} />
-          </button>
-          {sideOpen && (
-            <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
-              {["client", "server", "both"].map((s) => (
-                <button
-                  key={s}
-                  onClick={() =>
-                    setActiveSide((prev) => (prev === s ? null : s))
-                  }
-                  className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
-                    activeSide === s
-                      ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Results */}
-      <div className="max-h-[55vh] overflow-y-auto divide-y divide-zinc-800">
-        {debouncedQuery.length < 2 && !activeCategory && !activeSide && (
-          <div className="flex flex-col items-center gap-3 py-12 text-zinc-500">
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            <p className="text-sm">Type to search Modrinth</p>
+          {/* Sort toggle */}
+          <div className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-700 text-xs">
+            {["relevance", "downloads"].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setSortIndex(opt)}
+                className={`px-3 py-1.5 capitalize transition-colors ${
+                  sortIndex === opt
+                    ? "bg-zinc-700 text-white"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
           </div>
-        )}
-        {(debouncedQuery.length >= 2 || activeCategory || activeSide) &&
-          !isFetching &&
-          hits.length === 0 && (
+          {selected.size > 0 && (
+            <button
+              onClick={() =>
+                addSelected(hits.filter((h) => selected.has(h.project_id)))
+              }
+              disabled={adding}
+              className="shrink-0 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all hover:bg-emerald-400 active:scale-95 disabled:opacity-40"
+            >
+              {adding
+                ? "Adding…"
+                : `Add ${selected.size} mod${selected.size !== 1 ? "s" : ""}`}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M12 4L4 12M4 4l8 8"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-start border-b border-zinc-800">
+          <div className="flex-1 bg-zinc-900">
+            <button
+              onClick={() => setCategoriesOpen((o) => !o)}
+              className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Categories
+                </span>
+                {activeCategory && (
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
+                    {activeCategory}
+                  </span>
+                )}
+              </div>
+              <Chevron open={categoriesOpen} />
+            </button>
+            {categoriesOpen && categories.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+                {categories.map((cat) => (
+                  <button
+                    key={cat.name}
+                    onClick={() =>
+                      setActiveCategory((prev) =>
+                        prev === cat.name ? null : cat.name,
+                      )
+                    }
+                    className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
+                      activeCategory === cat.name
+                        ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
+                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="w-px self-stretch bg-zinc-800" />
+          <div className="w-52 bg-zinc-900">
+            <button
+              onClick={() => setSideOpen((o) => !o)}
+              className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Side
+                </span>
+                {activeSide && (
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
+                    {activeSide}
+                  </span>
+                )}
+              </div>
+              <Chevron open={sideOpen} />
+            </button>
+            {sideOpen && (
+              <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
+                {["client", "server", "both"].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() =>
+                      setActiveSide((prev) => (prev === s ? null : s))
+                    }
+                    className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
+                      activeSide === s
+                        ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
+                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Results */}
+        <div ref={scrollRef} className="scrollbar-dark max-h-[55vh] overflow-y-auto divide-y divide-zinc-800 overscroll-contain">
+          {debouncedQuery.length < 2 && !activeCategory && !activeSide && (
+            <div className="flex flex-col items-center gap-3 py-12 text-zinc-500">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <p className="text-sm">Type to search Modrinth</p>
+            </div>
+          )}
+          {enabled && !isFetching && hits.length === 0 && (
             <p className="py-16 text-center text-sm text-zinc-500">
               No results
             </p>
           )}
-        {hits.map((hit) => {
-          const already = existingIds.has(hit.project_id);
-          const isSelected = selected.has(hit.project_id);
-          const cats = displayCategories(hit.categories);
-          return (
-            <div
-              key={hit.project_id}
-              onClick={() => toggle(hit.project_id)}
-              className={`relative flex items-center gap-4 px-4 py-3.5 transition-colors ${
-                already
-                  ? "cursor-default opacity-30"
-                  : isSelected
+          {hits.map((hit) => {
+            const already = existingIds.has(hit.project_id);
+            const isSelected = selected.has(hit.project_id);
+            const cats = displayCategories(hit.categories ?? []);
+            return (
+              <div
+                key={hit.project_id}
+                onClick={() => toggle(hit.project_id)}
+                className={`relative flex items-center gap-4 px-4 py-3.5 transition-colors ${
+                  already
+                    ? "cursor-default opacity-30"
+                    : isSelected
                     ? "cursor-pointer bg-emerald-950/40"
                     : "cursor-pointer hover:bg-zinc-900"
-              }`}
-            >
-              {isSelected && (
-                <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-500" />
-              )}
-
-              {/* Checkbox */}
-              <div
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                  already
-                    ? "border-zinc-600 bg-zinc-700"
-                    : isSelected
-                      ? "border-emerald-500 bg-emerald-500"
-                      : "border-zinc-600"
                 }`}
               >
-                {(already || isSelected) && (
-                  <svg width="9" height="7" viewBox="0 0 8 6" fill="none">
-                    <path
-                      d="M1 3l2 2 4-4"
-                      stroke="white"
-                      strokeWidth="1.3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                {isSelected && (
+                  <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-500" />
                 )}
-              </div>
 
-              {/* Icon */}
-              {hit.icon_url ? (
-                <img
-                  src={hit.icon_url}
-                  alt=""
-                  className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-white/5"
-                />
-              ) : (
+                {/* Checkbox */}
                 <div
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white ${modColor(hit.title)}`}
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                    already
+                      ? "border-zinc-600 bg-zinc-700"
+                      : isSelected
+                        ? "border-emerald-500 bg-emerald-500"
+                        : "border-zinc-600"
+                  }`}
                 >
-                  {hit.title[0].toUpperCase()}
+                  {(already || isSelected) && (
+                    <svg width="9" height="7" viewBox="0 0 8 6" fill="none">
+                      <path
+                        d="M1 3l2 2 4-4"
+                        stroke="white"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
                 </div>
-              )}
 
-              {/* Info */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate font-semibold text-white">
-                    {hit.title}
-                  </p>
-                  <SideBadge side={deriveSide(hit)} />
-                </div>
-                <p className="mt-0.5 truncate text-xs text-zinc-400 leading-relaxed">
-                  {hit.description}
-                </p>
-                {cats.length > 0 && (
-                  <div className="mt-1.5 flex gap-1">
-                    {cats.map((c) => (
-                      <span
-                        key={c}
-                        className="rounded bg-zinc-700 px-1.5 py-0.5 text-xs capitalize text-zinc-200"
-                      >
-                        {c}
-                      </span>
-                    ))}
+                {/* Icon */}
+                {hit.icon_url ? (
+                  <img
+                    src={hit.icon_url}
+                    alt=""
+                    className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-white/5"
+                  />
+                ) : (
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white ${modColor(hit.title)}`}
+                  >
+                    {hit.title[0].toUpperCase()}
                   </div>
                 )}
-              </div>
 
-              {/* Downloads */}
-              <div className="shrink-0 text-right">
-                <span className="text-sm font-semibold text-zinc-200">
-                  {fmtDownloads(hit.downloads)}
-                </span>
-                <p className="text-xs text-zinc-500">downloads</p>
+                {/* Info */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-semibold text-white">
+                      {hit.title}
+                    </p>
+                    <SideBadge side={deriveSide(hit)} />
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-zinc-400 leading-relaxed">
+                    {hit.description}
+                  </p>
+                  {cats.length > 0 && (
+                    <div className="mt-1.5 flex gap-1">
+                      {cats.map((c) => (
+                        <span
+                          key={c}
+                          className="rounded bg-zinc-700 px-1.5 py-0.5 text-xs capitalize text-zinc-200"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Downloads */}
+                <div className="shrink-0 text-right">
+                  <span className="text-sm font-semibold text-zinc-200">
+                    {fmtDownloads(hit.downloads)}
+                  </span>
+                  <p className="text-xs text-zinc-500">downloads</p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+          {isFetchingNextPage &&
+            [...Array(3)].map((_, i) => (
+              <div key={`skel-${i}`} className="flex items-center gap-4 px-4 py-3.5">
+                <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-zinc-800" />
+                <div className="h-12 w-12 shrink-0 animate-pulse rounded-xl bg-zinc-800" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-32 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-3 w-52 animate-pulse rounded bg-zinc-800" />
+                </div>
+              </div>
+            ))}
+          {!isFetchingNextPage && hasNextPage && (
+            <div ref={sentinelRef} className="h-px" />
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -559,8 +794,7 @@ function ModpackIconWidget({ modpack, onSave }) {
 
   useEffect(() => {
     function handler(e) {
-      if (ref.current && !ref.current.contains(e.target))
-        setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -842,6 +1076,264 @@ function FailedBadge() {
   );
 }
 
+function VersionPickerPopover({
+  mod,
+  modpackId,
+  cacheKey,
+  readOnly,
+  addVersionToast,
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [patchError, setPatchError] = useState(null);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
+  const queryClient = useQueryClient();
+
+  const isTemp = String(mod.id).startsWith("temp-");
+
+  function openPopover() {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const estimate = 320;
+    const left = Math.min(rect.left, window.innerWidth - 320 - 8);
+    const top = window.innerHeight - rect.bottom >= estimate + 8
+      ? rect.bottom + 4
+      : Math.max(8, rect.top - estimate - 4);
+    setPopoverPos({ top, left });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target)
+      )
+        setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedVersion(null);
+      setPatchError(null);
+    }
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !popoverRef.current || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const actualHeight = popoverRef.current.offsetHeight;
+    setPopoverPos((prev) => {
+      if (prev.top < rect.top) {
+        return { ...prev, top: Math.max(8, rect.top - actualHeight - 4) };
+      }
+      return prev;
+    });
+  }, [open]);
+
+  const {
+    data: versions,
+    isLoading: versionsLoading,
+    isError: versionsError,
+  } = useQuery({
+    queryKey: ["mod-versions", modpackId, mod.id],
+    queryFn: () => getModVersions(modpackId, mod.id),
+    enabled: open && !isTemp,
+    staleTime: Infinity,
+  });
+
+  const { mutate: doUpdate, isPending: updating } = useMutation({
+    mutationFn: (ver) =>
+      updateModVersion(modpackId, mod.id, {
+        version_id: ver.version_id,
+        version_number: ver.version_number,
+        filename: ver.filename,
+      }),
+    onSuccess: (_data, ver) => {
+      addVersionToast({
+        name: mod.name,
+        icon_url: mod.icon_url ?? null,
+        old_filename: mod.filename ?? mod.version_number ?? "current file",
+        new_filename: ver.filename,
+        download_url: ver.download_url,
+      });
+      queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
+      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpackId] });
+      setOpen(false);
+    },
+    onError: (err) => {
+      setPatchError(err?.response?.data?.detail ?? "Update failed");
+    },
+  });
+
+  const isCurrent = (ver) => ver.version_id === mod.version_id;
+  const isAlreadyOnSelected = selectedVersion && isCurrent(selectedVersion);
+  const oldFile = mod.filename ?? mod.version_number ?? "current file";
+  const hint =
+    selectedVersion && !isAlreadyOnSelected
+      ? `Replace ${oldFile} → ${selectedVersion.filename}`
+      : null;
+
+  const clickable = !readOnly && !isTemp;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!clickable) return;
+          open ? setOpen(false) : openPopover();
+        }}
+        className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-left transition-colors ${
+          clickable ? "cursor-pointer hover:bg-zinc-800" : "cursor-default"
+        }`}
+      >
+        <span className="text-xs text-zinc-400">
+          {mod.version_number ?? "—"}
+        </span>
+        <VersionTypeBadge type={mod.version_type ?? null} />
+        {clickable && (
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 12 12"
+            fill="none"
+            className="shrink-0 text-zinc-600"
+          >
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{
+              position: "fixed",
+              top: popoverPos.top,
+              left: popoverPos.left,
+              zIndex: 9999,
+            }}
+            className="w-80 rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-zinc-800 px-3 py-2.5">
+              <p className="text-xs font-medium text-zinc-300">
+                Change version — {mod.name}
+              </p>
+            </div>
+
+            <div className="max-h-52 overflow-y-auto">
+              {versionsLoading && (
+                <div className="space-y-2 p-3">
+                  {[...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-8 animate-pulse rounded bg-zinc-800"
+                    />
+                  ))}
+                </div>
+              )}
+              {versionsError && (
+                <p className="px-3 py-4 text-center text-xs text-red-400">
+                  Could not load versions from Modrinth
+                </p>
+              )}
+              {!versionsLoading && !versionsError && versions?.length === 0 && (
+                <p className="px-3 py-4 text-center text-xs text-zinc-500">
+                  No versions available
+                </p>
+              )}
+              {versions?.map((ver) => {
+                const current = isCurrent(ver);
+                const sel = selectedVersion?.version_id === ver.version_id;
+                return (
+                  <button
+                    key={ver.version_id}
+                    onClick={() => setSelectedVersion(ver)}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left transition-colors ${sel ? "bg-zinc-800" : "hover:bg-zinc-900"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${current ? "bg-emerald-400" : "bg-transparent"}`}
+                      />
+                      <span
+                        className={`text-xs ${current ? "font-medium text-zinc-200" : "text-zinc-400"}`}
+                      >
+                        {ver.version_number}
+                      </span>
+                      {ver.version_type !== "release" && (
+                        <span
+                          className={`rounded border px-1 py-0.5 text-[10px] font-medium ${
+                            ver.version_type === "beta"
+                              ? "border-yellow-800 bg-yellow-950 text-yellow-400"
+                              : "border-red-900 bg-red-950 text-red-400"
+                          }`}
+                        >
+                          {ver.version_type}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-zinc-600">
+                      {new Date(ver.date_published).toLocaleDateString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedVersion && (
+              <div className="space-y-2 border-t border-zinc-800 p-3">
+                {hint && (
+                  <p className="truncate font-mono text-[10px] text-zinc-500">
+                    {hint}
+                  </p>
+                )}
+                {patchError && (
+                  <p className="text-xs text-red-400">{patchError}</p>
+                )}
+                <div className="flex gap-2">
+                  <a
+                    href={selectedVersion.download_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded border border-zinc-700 py-1.5 text-center text-xs text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
+                  >
+                    Download
+                  </a>
+                  <button
+                    onClick={() => doUpdate(selectedVersion)}
+                    disabled={!!isAlreadyOnSelected || updating}
+                    className="flex-1 rounded bg-emerald-700 py-1.5 text-center text-xs text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {updating ? "Updating…" : "Update modpack"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 function ModTable({
   modpackId,
   mods,
@@ -849,21 +1341,57 @@ function ModTable({
   loading,
   cacheKey,
   failedProjectIds,
+  addVersionToast,
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [editMode, setEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [viewMode, setViewMode] = useState("list");
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
+
+  useEffect(() => {
+    setSortCol(null);
+    setSortDir("asc");
+    setPage(1);
+  }, [modpackId]);
+
+  const MOD_SORT_KEYS = {
+    name:       (m) => m.name.toLowerCase(),
+    version:    (m) => m.version_number ?? "￿",
+    side:       (m) => ({ client: 0, server: 1, both: 2 }[m.side] ?? 3),
+    categories: (m) => displayCategories(m.categories ?? [])[0] ?? "￿",
+  };
+
+  function handleSort(col) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+    setPage(1);
+  }
+
+  const sortedMods = sortCol
+    ? [...mods].sort((a, b) => {
+        const va = MOD_SORT_KEYS[sortCol](a);
+        const vb = MOD_SORT_KEYS[sortCol](b);
+        const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : mods;
 
   const totalPages = Math.max(1, Math.ceil(mods.length / PAGE_SIZE));
-  const pageMods = mods.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageMods = sortedMods.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const { mutate: bulkRemove, isPending: removing } = useMutation({
     mutationFn: () =>
       Promise.all([...selectedIds].map((id) => removeMod(modpackId, id))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
+      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpackId] });
       setSelectedIds(new Set());
       setEditMode(false);
     },
@@ -887,44 +1415,92 @@ function ModTable({
     setViewMode(mode);
   }
 
-  const colSpan = editMode ? 7 : 6;
+  const colSpan = 7;
 
   return (
     <div>
       {/* Table toolbar */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        {/* Prev / Next */}
+        {/* Left: edit controls (list only) */}
         <div className="flex items-center gap-2">
+          {!readOnly &&
+            viewMode === "list" &&
+            (editMode ? (
+              <>
+                {selectedIds.size > 0 && (
+                  <button
+                    onClick={() => bulkRemove()}
+                    disabled={removing}
+                    className="inline-flex items-center justify-center leading-none rounded border border-red-900 bg-red-950/40 px-2 py-1 text-xs font-medium text-red-400 transition-all hover:bg-red-900/50 active:scale-95 disabled:opacity-40"
+                  >
+                    {removing
+                      ? "Removing…"
+                      : `Remove ${selectedIds.size} mod${selectedIds.size !== 1 ? "s" : ""}`}
+                  </button>
+                )}
+                <button
+                  onClick={exitEdit}
+                  title="Cancel"
+                  className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M12 4L4 12M4 4l8 8"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setEditMode(true)}
+                title="Edit mods"
+                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            ))}
+        </div>
+
+        {/* Right: pagination + view toggle (always stable) */}
+        <div className="flex items-center gap-3">
           {viewMode === "list" && totalPages > 1 && (
-            <>
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white disabled:opacity-40"
+                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white disabled:opacity-30"
               >
-                ← Prev
+                ←
               </button>
+              <span className="px-1 text-xs text-zinc-500">
+                {(page - 1) * PAGE_SIZE + 1}—
+                {Math.min(page * PAGE_SIZE, mods.length)} of {mods.length}
+              </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white disabled:opacity-40"
+                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white disabled:opacity-30"
               >
-                Next →
+                →
               </button>
-            </>
+            </div>
           )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Page range */}
-          {viewMode === "list" && totalPages > 1 && (
-            <span className="text-sm text-zinc-500">
-              {(page - 1) * PAGE_SIZE + 1}–
-              {Math.min(page * PAGE_SIZE, mods.length)} of {mods.length}
-            </span>
-          )}
-          {/* View toggle */}
-          <div className="flex overflow-hidden rounded-md border border-zinc-700">
+          <div className="flex overflow-hidden rounded border border-zinc-700">
             {[
               ["list", <IconList />],
               ["grid", <IconGrid />],
@@ -932,7 +1508,7 @@ function ModTable({
               <button
                 key={mode}
                 onClick={() => switchView(mode)}
-                className={`px-3 py-2 transition-colors ${
+                className={`inline-flex items-center justify-center px-2 py-1 transition-colors ${
                   viewMode === mode
                     ? "bg-zinc-700 text-white"
                     : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
@@ -942,325 +1518,447 @@ function ModTable({
               </button>
             ))}
           </div>
-
-          {/* Edit controls (list only) */}
-          {!readOnly && viewMode === "list" && (
-            <>
-              {editMode ? (
-                <>
-                  {selectedIds.size > 0 && (
-                    <button
-                      onClick={() => bulkRemove()}
-                      disabled={removing}
-                      className="rounded-md border border-red-900 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-400 transition-all hover:bg-red-900/50 active:scale-95 disabled:opacity-40"
-                    >
-                      {removing
-                        ? "Removing…"
-                        : `Remove ${selectedIds.size} mod${selectedIds.size !== 1 ? "s" : ""}`}
-                    </button>
-                  )}
-                  <button
-                    onClick={exitEdit}
-                    className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white active:scale-95"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white active:scale-95"
-                >
-                  Edit
-                </button>
-              )}
-            </>
-          )}
         </div>
       </div>
 
-      {/* Grid view */}
-      {viewMode === "grid" && (
-        <div>
-          {loading && (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-48 animate-pulse rounded-xl bg-zinc-800"
-                />
-              ))}
-            </div>
-          )}
-          {!loading && mods.length === 0 && (
-            <div className="rounded-xl border border-zinc-800 px-4 py-12 text-center text-sm text-zinc-600">
-              No mods yet — click Add mods to get started.
-            </div>
-          )}
-          {!loading && mods.length > 0 && (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-              {groupByCategory(mods).map(([category, catMods]) => (
-                <div
-                  key={category}
-                  className="overflow-hidden rounded-xl border border-zinc-800"
-                >
-                  <div className="border-b border-zinc-800 bg-zinc-900 px-4 py-2.5 flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 capitalize">
-                      {category}
-                    </span>
-                    <span className="text-xs text-zinc-600">
-                      {catMods.length}
-                    </span>
-                  </div>
-                  <table className="w-full table-fixed text-sm">
-                    <colgroup>
-                      <col className="w-full" />
-                      <col className="w-16" />
-                      <col className="w-8" />
-                    </colgroup>
-                    <tbody className="divide-y divide-zinc-800/50">
-                      {catMods.map((mod) => (
-                        <tr
-                          key={mod.id}
-                          className="bg-zinc-950 transition-colors hover:bg-zinc-900/60"
+      {/* Views —" carousel: list left slot, grid right slot; only transform moves */}
+      <div className="overflow-hidden">
+        <div
+          style={{
+            display: "flex",
+            width: "200%",
+            transform:
+              viewMode === "list" ? "translateX(0)" : "translateX(-50%)",
+            transition: "transform 250ms ease",
+            willChange: "transform",
+          }}
+        >
+          {/* List view — left slot */}
+          <div style={{ width: "50%" }}>
+            <div className="overflow-hidden rounded-xl border border-zinc-800">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      <th className="p-0">
+                        <div
+                          style={{
+                            overflow: "hidden",
+                            maxWidth: editMode ? "3rem" : "0",
+                            transition: "max-width 250ms cubic-bezier(0.4,0,0.2,1)",
+                          }}
                         >
-                          <td className="px-3 py-2">
-                            <div className="flex min-w-0 items-center gap-2.5">
-                              {mod.icon_url ? (
-                                <img
-                                  src={mod.icon_url}
-                                  alt=""
-                                  className="h-10 w-10 shrink-0 rounded-md object-cover"
-                                />
-                              ) : (
-                                <div
-                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
-                                >
-                                  {mod.name[0].toUpperCase()}
-                                </div>
-                              )}
-                              <p className="truncate text-xs font-medium text-white">
-                                {mod.name}
-                              </p>
+                          <div className="w-12 py-2" />
+                        </div>
+                      </th>
+                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("name")}>
+                        Mod <SortIcon active={sortCol === "name"} dir={sortDir} />
+                      </th>
+                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("version")}>
+                        Version <SortIcon active={sortCol === "version"} dir={sortDir} />
+                      </th>
+                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("categories")}>
+                        Categories <SortIcon active={sortCol === "categories"} dir={sortDir} />
+                      </th>
+                      <th className="px-4 py-2">Filename</th>
+                      <th className="cursor-pointer select-none px-4 py-2 text-right hover:text-zinc-300" onClick={() => handleSort("side")}>
+                        Side <SortIcon active={sortCol === "side"} dir={sortDir} />
+                      </th>
+                      <th className="w-8 px-4 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {loading &&
+                      [...Array(4)].map((_, i) => (
+                        <tr key={i} className="bg-zinc-950">
+                          <td className="px-4 py-3" colSpan={colSpan}>
+                            <div className="flex items-center gap-3">
+                              <div className="h-9 w-9 animate-pulse rounded-lg bg-zinc-800" />
+                              <div className="space-y-1.5">
+                                <div className="h-3.5 w-32 animate-pulse rounded bg-zinc-800" />
+                                <div className="h-3 w-48 animate-pulse rounded bg-zinc-800" />
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {failedProjectIds?.has(mod.modrinth_project_id) ? (
-                              <FailedBadge />
-                            ) : (
-                              <SideBadge side={mod.side} />
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <a
-                              href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-zinc-600 transition-colors hover:text-emerald-400"
-                            >
-                              <svg
-                                width="12"
-                                height="12"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                <polyline points="15 3 21 3 21 9" />
-                                <line x1="10" y1="14" x2="21" y2="3" />
-                              </svg>
-                            </a>
                           </td>
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* List view */}
-      {viewMode === "list" && (
-        <div className="overflow-hidden rounded-xl border border-zinc-800">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                  {editMode && <th className="w-8 px-4 py-2" />}
-                  <th className="px-4 py-2">Mod</th>
-                  <th className="px-4 py-2">Version</th>
-                  <th className="px-4 py-2">Categories</th>
-                  <th className="px-4 py-2">Filename</th>
-                  <th className="px-4 py-2 text-right">Side</th>
-                  <th className="w-8 px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/50">
-                {loading &&
-                  [...Array(4)].map((_, i) => (
-                    <tr key={i} className="bg-zinc-950">
-                      <td className="px-4 py-3" colSpan={colSpan}>
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 animate-pulse rounded-lg bg-zinc-800" />
-                          <div className="space-y-1.5">
-                            <div className="h-3.5 w-32 animate-pulse rounded bg-zinc-800" />
-                            <div className="h-3 w-48 animate-pulse rounded bg-zinc-800" />
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                {!loading && mods.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={colSpan}
-                      className="px-4 py-12 text-center text-sm text-zinc-600"
-                    >
-                      No mods yet — click Add mods to get started.
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  pageMods.map((mod) => {
-                    const cats = displayCategories(mod.categories ?? []);
-                    const isSelected = selectedIds.has(mod.id);
-                    return (
-                      <tr
-                        key={mod.id}
-                        onClick={
-                          editMode ? () => toggleSelect(mod.id) : undefined
-                        }
-                        className={`bg-zinc-950 transition-colors hover:bg-zinc-900/60 ${editMode ? "cursor-pointer" : ""} ${isSelected ? "bg-zinc-900/80" : ""}`}
-                      >
-                        {editMode && (
-                          <td className="px-4 py-2">
-                            <div
-                              className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
-                                isSelected
-                                  ? "border-red-500 bg-red-500"
-                                  : "border-zinc-600"
-                              }`}
-                            >
-                              {isSelected && (
-                                <svg
-                                  width="8"
-                                  height="6"
-                                  viewBox="0 0 8 6"
-                                  fill="none"
-                                >
-                                  <path
-                                    d="M1 3l2 2 4-4"
-                                    stroke="white"
-                                    strokeWidth="1.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              )}
-                            </div>
-                          </td>
-                        )}
-
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-3">
-                            {mod.icon_url ? (
-                              <img
-                                src={mod.icon_url}
-                                alt=""
-                                className="h-10 w-10 shrink-0 rounded-md object-cover"
-                              />
-                            ) : (
-                              <div
-                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
-                              >
-                                {mod.name[0].toUpperCase()}
-                              </div>
-                            )}
-                            <p className="truncate font-medium text-white">
-                              {mod.name}
-                            </p>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-zinc-400">
-                              {mod.version_number ?? "—"}
-                            </span>
-                            <VersionTypeBadge type={mod.version_type ?? null} />
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex flex-wrap gap-1">
-                            {cats.length > 0 ? (
-                              cats.map((cat) => (
-                                <span
-                                  key={cat}
-                                  className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize text-zinc-400"
-                                >
-                                  {cat}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-zinc-700">—</span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <span className="font-mono text-xs text-zinc-500">
-                            {mod.filename ?? "—"}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-2 text-right">
-                          {failedProjectIds?.has(mod.modrinth_project_id) ? (
-                            <FailedBadge />
-                          ) : (
-                            <SideBadge side={mod.side} />
-                          )}
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <a
-                            href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-zinc-500 transition-colors hover:text-emerald-400"
-                            title="View on Modrinth"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                              <polyline points="15 3 21 3 21 9" />
-                              <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                          </a>
+                    {!loading && mods.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={colSpan}
+                          className="px-4 py-12 text-center text-sm text-zinc-600"
+                        >
+                          No mods yet — click Add mods to get started.
                         </td>
                       </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
+                    )}
+                    {!loading &&
+                      pageMods.map((mod) => {
+                        const cats = displayCategories(mod.categories ?? []);
+                        const isSelected = selectedIds.has(mod.id);
+                        return (
+                          <tr
+                            key={mod.id}
+                            onClick={
+                              editMode ? () => toggleSelect(mod.id) : undefined
+                            }
+                            className={`bg-zinc-950 transition-colors hover:bg-zinc-900/60 ${editMode ? "cursor-pointer" : ""} ${isSelected ? "bg-zinc-900/80" : ""}`}
+                          >
+                            <td className="p-0">
+                              <div
+                                style={{
+                                  overflow: "hidden",
+                                  maxWidth: editMode ? "3rem" : "0",
+                                  transition: "max-width 250ms cubic-bezier(0.4,0,0.2,1)",
+                                }}
+                              >
+                                <div className="px-4 py-2">
+                                  <div
+                                    className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${isSelected ? "border-red-500 bg-red-500" : "border-zinc-600"}`}
+                                  >
+                                    {isSelected && (
+                                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                                        <path
+                                          d="M1 3l2 2 4-4"
+                                          stroke="white"
+                                          strokeWidth="1.2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-3">
+                                {mod.icon_url ? (
+                                  <img
+                                    src={mod.icon_url}
+                                    alt=""
+                                    className="h-10 w-10 shrink-0 rounded-md object-cover"
+                                  />
+                                ) : (
+                                  <div
+                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
+                                  >
+                                    {mod.name[0].toUpperCase()}
+                                  </div>
+                                )}
+                                <p className="truncate font-medium text-white">
+                                  {mod.name}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <VersionPickerPopover
+                                mod={mod}
+                                modpackId={modpackId}
+                                cacheKey={cacheKey}
+                                readOnly={readOnly}
+                                addVersionToast={addVersionToast}
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className="flex flex-wrap gap-1">
+                                {cats.length > 0 ? (
+                                  cats.map((cat) => (
+                                    <span
+                                      key={cat}
+                                      className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize text-zinc-400"
+                                    >
+                                      {cat}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-zinc-700">
+                                    —
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className="font-mono text-xs text-zinc-500">
+                                {mod.filename ?? "—"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              {failedProjectIds?.has(
+                                mod.modrinth_project_id,
+                              ) ? (
+                                <FailedBadge />
+                              ) : (
+                                <SideBadge side={mod.side} />
+                              )}
+                            </td>
+                            <td className="px-4 py-2">
+                              <a
+                                href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-zinc-500 transition-colors hover:text-emerald-400"
+                                title="View on Modrinth"
+                              >
+                                <svg
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                  <polyline points="15 3 21 3 21 9" />
+                                  <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          {/* Grid view — right slot */}
+          <div style={{ width: "50%" }}>
+            <div>
+              {loading && (
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                  {[...Array(4)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-48 animate-pulse rounded-xl bg-zinc-800"
+                    />
+                  ))}
+                </div>
+              )}
+              {!loading && mods.length === 0 && (
+                <div className="rounded-xl border border-zinc-800 px-4 py-12 text-center text-sm text-zinc-600">
+                  No mods yet — click Add mods to get started.
+                </div>
+              )}
+              {!loading && mods.length > 0 && (
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                  {groupByCategory(mods).map(([category, catMods]) => (
+                    <div
+                      key={category}
+                      className="overflow-hidden rounded-xl border border-zinc-800"
+                    >
+                      <div className="border-b border-zinc-800 bg-zinc-900 px-4 py-2.5 flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 capitalize">
+                          {category}
+                        </span>
+                        <span className="text-xs text-zinc-600">
+                          {catMods.length}
+                        </span>
+                      </div>
+                      <table className="w-full table-fixed text-sm">
+                        <colgroup>
+                          <col className="w-full" />
+                          <col className="w-16" />
+                          <col className="w-8" />
+                        </colgroup>
+                        <tbody className="divide-y divide-zinc-800/50">
+                          {catMods.map((mod) => (
+                            <tr
+                              key={mod.id}
+                              className="bg-zinc-950 transition-colors hover:bg-zinc-900/60"
+                            >
+                              <td className="px-3 py-2">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  {mod.icon_url ? (
+                                    <img
+                                      src={mod.icon_url}
+                                      alt=""
+                                      className="h-10 w-10 shrink-0 rounded-md object-cover"
+                                    />
+                                  ) : (
+                                    <div
+                                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
+                                    >
+                                      {mod.name[0].toUpperCase()}
+                                    </div>
+                                  )}
+                                  <p className="truncate text-xs font-medium text-white">
+                                    {mod.name}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {failedProjectIds?.has(
+                                  mod.modrinth_project_id,
+                                ) ? (
+                                  <FailedBadge />
+                                ) : (
+                                  <SideBadge side={mod.side} />
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <a
+                                  href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-zinc-600 transition-colors hover:text-emerald-400"
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                  </svg>
+                                </a>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function pairChangelog(entries) {
+  const byProject = new Map();
+  entries.forEach((entry, idx) => {
+    const key = entry.modrinth_project_id;
+    if (!byProject.has(key)) byProject.set(key, []);
+    byProject.get(key).push({ entry, idx });
+  });
+
+  const stories = [];
+
+  for (const projectEntries of byProject.values()) {
+    // Sort ascending by idx so [0] = most recent (entries are newest-first)
+    const sorted = [...projectEntries].sort((a, b) => a.idx - b.idx);
+    const mostRecent = sorted[0];
+    const adds = sorted.filter((e) => e.entry.action === "added");
+    const removes = sorted.filter((e) => e.entry.action === "removed");
+
+    if (mostRecent.entry.action === "added") {
+      const latestAdd = adds[0].entry;
+      if (removes.length > 0) {
+        const latestRemove = removes[0].entry;
+        if (latestAdd.version_number !== latestRemove.version_number) {
+          // Real version change — show as Updated
+          stories.push({ anchorIdx: sorted[0].idx, item: { type: "pair", added: latestAdd, removed: latestRemove } });
+        } else {
+          // Same-version round-trip (e.g. fix-mods no-op) — show original add only
+          const originalAdd = adds[adds.length - 1];
+          stories.push({ anchorIdx: originalAdd.idx, item: { type: "single", entry: originalAdd.entry } });
+        }
+      } else {
+        stories.push({ anchorIdx: sorted[0].idx, item: { type: "single", entry: latestAdd } });
+      }
+    } else {
+      // Most recent action is "removed" — mod is currently out of the pack
+      stories.push({ anchorIdx: sorted[0].idx, item: { type: "single", entry: mostRecent.entry } });
+    }
+  }
+
+  stories.sort((a, b) => a.anchorIdx - b.anchorIdx);
+  return stories.map((s) => s.item);
+}
+
+function ChangelogRow({ entry }) {
+  const added = entry.action === "added";
+  const date = new Date(entry.created_at);
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      {entry.mod_icon_url ? (
+        <img
+          src={entry.mod_icon_url}
+          alt=""
+          className="h-8 w-8 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(entry.mod_name)}`}
+        >
+          {entry.mod_name[0].toUpperCase()}
+        </div>
       )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-zinc-200">{entry.mod_name}</p>
+        <div className="mt-0.5 space-y-0.5">
+          {entry.version_number && (
+            <p className="truncate font-mono text-xs text-zinc-500">
+              {entry.version_number}
+            </p>
+          )}
+          <p className="text-xs text-zinc-600">{dateStr}</p>
+        </div>
+      </div>
+      <span
+        className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
+          added
+            ? "bg-emerald-950 text-emerald-400 border border-emerald-900/60"
+            : "bg-red-950 text-red-400 border border-red-900/60"
+        }`}
+      >
+        {added ? "Added" : "Removed"}
+      </span>
+    </div>
+  );
+}
+
+function ChangelogUpdateRow({ added, removed }) {
+  const dateStr = new Date(added.created_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      {added.mod_icon_url ? (
+        <img src={added.mod_icon_url} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
+      ) : (
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(added.mod_name)}`}>
+          {added.mod_name[0].toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-zinc-200">{added.mod_name}</p>
+        <div className="mt-0.5 space-y-0.5">
+          {added.version_number && (
+            <p className="truncate font-mono text-xs text-emerald-400">{added.version_number}</p>
+          )}
+          {removed.version_number && (
+            <p className="truncate font-mono text-xs text-red-400/70 line-through decoration-red-500/30">
+              {removed.version_number}
+            </p>
+          )}
+          <p className="text-xs text-zinc-600">{dateStr}</p>
+        </div>
+      </div>
+      <span className="shrink-0 rounded border border-blue-900/60 bg-blue-950 px-1.5 py-0.5 text-xs font-medium text-blue-400">
+        Updated
+      </span>
     </div>
   );
 }
@@ -1271,22 +1969,103 @@ export default function ModpackBuilder() {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [showAddMods, setShowAddMods] = useState(false);
+  const [missingDeps, setMissingDeps] = useState([]);
+  const [depsShowing, setDepsShowing] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const [versionToasts, setVersionToasts] = useState([]);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameValue, setNameValue] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncCode, setSyncCode] = useState("");
   const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [needsRelink, setNeedsRelink] = useState(false);
+  const lastCompatibleVersion = useRef(null);
+  const lastCompatibleLoader = useRef(null);
   const [showFailedMods, setShowFailedMods] = useState(false);
   const [fixStatus, setFixStatus] = useState(null);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [changelogFilter, setChangelogFilter] = useState("all");
+  const [changelogPage, setChangelogPage] = useState(1);
+  const changelogScrollRef = useRef(null);
+  const changelogSentinelRef = useRef(null);
+  const leftColumnRef = useRef(null);
+  const [tableHeight, setTableHeight] = useState(0);
+  const [descriptionValue, setDescriptionValue] = useState("");
   const settingsRef = useRef(null);
+
+  function addToasts(mods) {
+    if (!mods.length) return;
+    mods.forEach((m, i) => {
+      setTimeout(() => {
+        const item = {
+          id: crypto.randomUUID(),
+          name: m.name,
+          icon_url: m.icon_url ?? null,
+          fading: false,
+        };
+        setToasts((prev) => [...prev, item]);
+        setTimeout(
+          () =>
+            setToasts((prev) =>
+              prev.map((t) => (t.id === item.id ? { ...t, fading: true } : t)),
+            ),
+          2000,
+        );
+        setTimeout(
+          () => setToasts((prev) => prev.filter((t) => t.id !== item.id)),
+          2650,
+        );
+      }, i * 120);
+    });
+  }
+
+  function addVersionToast({
+    name,
+    icon_url,
+    old_filename,
+    new_filename,
+    download_url,
+  }) {
+    const item = {
+      id: crypto.randomUUID(),
+      name,
+      icon_url: icon_url ?? null,
+      old_filename,
+      new_filename,
+      download_url,
+      fading: false,
+    };
+    setVersionToasts((prev) => [...prev, item]);
+  }
+
+  function dismissVersionToast(id) {
+    setVersionToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, fading: true } : t)),
+    );
+    setTimeout(
+      () => setVersionToasts((prev) => prev.filter((t) => t.id !== id)),
+      350,
+    );
+  }
+
+  const hasDeps = missingDeps.length > 0;
+  useEffect(() => {
+    if (!hasDeps) return;
+    let raf1 = requestAnimationFrame(() => {
+      let raf2 = requestAnimationFrame(() => setDepsShowing(true));
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [hasDeps]);
+
+  function dismissDeps() {
+    setDepsShowing(false);
+    setTimeout(() => setMissingDeps([]), 300);
+  }
 
   useEffect(() => {
     function handleClick(e) {
-      if (
-        settingsRef.current &&
-        !settingsRef.current.contains(e.target)
-      ) {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
         setSettingsOpen(false);
         setDeleteConfirming(false);
       }
@@ -1294,6 +2073,10 @@ export default function ModpackBuilder() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    if (settingsOpen && modpack) setDescriptionValue(modpack.description ?? "");
+  }, [settingsOpen]);
 
   const {
     data: modpack,
@@ -1305,13 +2088,69 @@ export default function ModpackBuilder() {
     placeholderData: () => {
       const list = queryClient.getQueryData(["modpacks"]);
       const summary = list?.find((m) => m.share_code === code);
-      return summary ? ({ ...summary, mods: [] }) : undefined;
+      return summary ? { ...summary, mods: [] } : undefined;
     },
   });
 
+  const { data: changelog = [] } = useQuery({
+    queryKey: ["modpack-changelog", modpack?.id],
+    queryFn: () => getModpackChangelog(modpack.id),
+    enabled: showChangelog && !!modpack && !modpack.source_share_code,
+  });
+
+  const { data: sourceChangelog = [] } = useQuery({
+    queryKey: ["source-changelog", modpack?.source_share_code],
+    queryFn: () => getSharedModpackChangelog(modpack.source_share_code),
+    enabled: !!modpack?.source_share_code,
+  });
+
+  useEffect(() => {
+    if (modpack && lastCompatibleVersion.current === null) {
+      lastCompatibleVersion.current = modpack.game_version;
+      lastCompatibleLoader.current = modpack.loader;
+    }
+  }, [modpack]);
+
+  const seenIds = new Set();
+  const dedupedChangelog = changelog.filter((e) => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    return true;
+  });
+  const allPaired = pairChangelog(dedupedChangelog);
+  const filteredPaired =
+    changelogFilter === "all"
+      ? allPaired
+      : changelogFilter === "updated"
+      ? allPaired.filter((item) => item.type === "pair")
+      : allPaired.filter((item) => item.type === "single" && item.entry.action === changelogFilter);
+  const visiblePaired = filteredPaired.slice(0, changelogPage * 20);
+  const hasMoreChangelog = visiblePaired.length < filteredPaired.length;
+
+  useEffect(() => {
+    if (!hasMoreChangelog || !changelogSentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setChangelogPage((p) => p + 1);
+      },
+      { root: changelogScrollRef.current, threshold: 0 },
+    );
+    observer.observe(changelogSentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMoreChangelog, changelogPage]);
+
+  useEffect(() => {
+    if (!leftColumnRef.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const h = Math.round(entry.contentRect.height);
+      setTableHeight((prev) => (prev === h ? prev : h));
+    });
+    observer.observe(leftColumnRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const { mutate: saveModpack } = useMutation({
-    mutationFn: (input) =>
-      updateModpack(modpack.id, input),
+    mutationFn: (input) => updateModpack(modpack.id, input),
     onMutate: (input) => {
       queryClient.setQueryData(["modpack", code], (old) => ({
         ...old,
@@ -1363,12 +2202,20 @@ export default function ModpackBuilder() {
       );
       const failedMods = mods
         .filter((_, i) => results[i].status === "rejected")
-        .map((m) => ({ id: m.id, name: m.name, modrinth_project_id: m.modrinth_project_id, icon_url: m.icon_url }));
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          modrinth_project_id: m.modrinth_project_id,
+          icon_url: m.icon_url,
+        }));
       return { total: mods.length, failed: failedMods.length, failedMods };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["modpack", code] });
+      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpack.id] });
       setFixStatus({ done: true, ...result });
+      lastCompatibleVersion.current = modpack.game_version;
+      lastCompatibleLoader.current = modpack.loader;
     },
   });
 
@@ -1376,6 +2223,7 @@ export default function ModpackBuilder() {
     mutationFn: (modId) => removeMod(modpack.id, modId),
     onSuccess: (_, modId) => {
       queryClient.invalidateQueries({ queryKey: ["modpack", code] });
+      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpack.id] });
       setFixStatus((prev) =>
         prev
           ? {
@@ -1388,15 +2236,69 @@ export default function ModpackBuilder() {
     },
   });
 
+  const { mutate: addAllDeps, isPending: addingDeps } = useMutation({
+    mutationFn: async (deps) => {
+      const result = await addModsBulk(
+        modpack.id,
+        deps.map((dep) => ({
+          modrinth_project_id: dep.project_id,
+          name: dep.name,
+          side: "both",
+          icon_url: dep.icon_url ?? null,
+          categories: dep.categories ?? [],
+        })),
+      );
+      return result.missing_dependencies;
+    },
+    onMutate: (deps) => {
+      const previousData = queryClient.getQueryData(["modpack", code]);
+      queryClient.setQueryData(["modpack", code], (old) => {
+        if (!old) return old;
+        const tempMods = deps.map((dep) => ({
+          id: `temp-${dep.project_id}`,
+          modrinth_project_id: dep.project_id,
+          version_id: "",
+          name: dep.name,
+          side: "both",
+          icon_url: dep.icon_url ?? null,
+          version_number: null,
+          version_type: null,
+          filename: null,
+          categories: dep.categories ?? [],
+        }));
+        return { ...old, mods: [...old.mods, ...tempMods] };
+      });
+      dismissDeps();
+      addToasts(
+        deps.map((d) => ({ name: d.name, icon_url: d.icon_url ?? null })),
+      );
+      return { previousData };
+    },
+    onSuccess: (newMissing) => {
+      queryClient.invalidateQueries({ queryKey: ["modpack", code] });
+      setMissingDeps(newMissing);
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousData)
+        queryClient.setQueryData(["modpack", code], ctx.previousData);
+    },
+  });
+
+  const [exportSkipped, setExportSkipped] = useState([]);
+
   const { mutate: doExport, isPending: exporting } = useMutation({
-    mutationFn: () => exportMrpack(modpack.id),
-    onSuccess: (blob) => {
+    mutationFn: () => exportModpack(modpack.id),
+    onSuccess: ({ blob, skipped }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${modpack.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`;
       a.click();
       URL.revokeObjectURL(url);
+      if (skipped) {
+        const names = skipped.split(",").map((s) => s.trim()).filter(Boolean);
+        if (names.length) setExportSkipped(names);
+      }
     },
   });
 
@@ -1446,47 +2348,226 @@ export default function ModpackBuilder() {
       </button>
 
       {/* Header */}
-      <div
-        className={`${modpack.source_share_code ? "mb-4" : "mb-6"} flex flex-wrap items-start justify-between gap-4`}
-      >
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           {/* Modpack icon */}
           <ModpackIconWidget modpack={modpack} onSave={saveModpack} />
 
           {/* Name + meta */}
           <div className="pt-0.5">
-            {nameEditing ? (
-              <input
-                autoFocus
-                value={nameValue}
-                onChange={(e) => setNameValue(e.target.value)}
-                onBlur={() => {
-                  const trimmed = nameValue.trim();
-                  setNameEditing(false);
-                  if (trimmed && trimmed !== modpack.name)
-                    saveModpack({ name: trimmed });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                  if (e.key === "Escape") {
+            <div className="flex items-center gap-2">
+              {nameEditing ? (
+                <input
+                  autoFocus
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = nameValue.trim();
                     setNameEditing(false);
+                    if (trimmed && trimmed !== modpack.name)
+                      saveModpack({ name: trimmed });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") {
+                      setNameEditing(false);
+                      setNameValue(modpack.name);
+                    }
+                  }}
+                  className="bg-transparent text-2xl font-bold text-white outline-none border-b border-zinc-600 focus:border-emerald-500 transition-colors w-full"
+                />
+              ) : (
+                <h1
+                  className="text-2xl font-bold leading-none cursor-text hover:text-zinc-300 transition-colors"
+                  onClick={() => {
                     setNameValue(modpack.name);
-                  }
-                }}
-                className="bg-transparent text-2xl font-bold text-white outline-none border-b border-zinc-600 focus:border-emerald-500 transition-colors w-full"
-              />
-            ) : (
-              <h1
-                className="text-2xl font-bold cursor-text hover:text-zinc-300 transition-colors"
-                onClick={() => {
-                  setNameValue(modpack.name);
-                  setNameEditing(true);
-                }}
-                title="Click to rename"
-              >
-                {modpack.name}
-              </h1>
-            )}
+                    setNameEditing(true);
+                  }}
+                  title="Click to rename"
+                >
+                  {modpack.name}
+                </h1>
+              )}
+              <div className="relative mt-1" ref={settingsRef}>
+                <button
+                  onClick={() => setSettingsOpen((v) => !v)}
+                  className={`rounded p-1 transition-colors ${
+                    settingsOpen
+                      ? "text-zinc-200"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                  title="Modpack settings"
+                >
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+
+                {settingsOpen && (
+                  <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50">
+                    <div className="border-b border-zinc-800 px-4 py-3">
+                      <p className="text-sm font-semibold text-white">
+                        Settings
+                      </p>
+                    </div>
+
+                    {/* Version & Loader */}
+                    <div className="space-y-3 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                        Version &amp; Loader
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <span className="w-14 shrink-0 text-xs text-zinc-500">
+                          Version
+                        </span>
+                        <select
+                          value={modpack.game_version}
+                          onChange={(e) => {
+                            const newVersion = e.target.value;
+                            saveModpack({ game_version: newVersion });
+                            setFixStatus(null);
+                            if (modpack.mods.length > 0) {
+                              const alreadyCompatible =
+                                newVersion === lastCompatibleVersion.current &&
+                                modpack.loader === lastCompatibleLoader.current;
+                              setNeedsRelink(!alreadyCompatible);
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-600"
+                        >
+                          {MC_VERSIONS.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="w-14 shrink-0 text-xs text-zinc-500">
+                          Loader
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {LOADERS.map((l) => (
+                            <button
+                              key={l}
+                              onClick={() => {
+                                saveModpack({ loader: l });
+                                setFixStatus(null);
+                                if (modpack.mods.length > 0) {
+                                  const alreadyCompatible =
+                                    modpack.game_version ===
+                                      lastCompatibleVersion.current &&
+                                    l === lastCompatibleLoader.current;
+                                  setNeedsRelink(!alreadyCompatible);
+                                }
+                              }}
+                              className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-all ${
+                                modpack.loader === l
+                                  ? "bg-emerald-500 text-white"
+                                  : "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"
+                              }`}
+                            >
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-800" />
+                    <div className="space-y-2 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                        Description
+                      </p>
+                      <div className="relative">
+                        <textarea
+                          value={descriptionValue}
+                          onChange={(e) =>
+                            setDescriptionValue(e.target.value.slice(0, 150))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          onBlur={() => {
+                            const trimmed = descriptionValue.trim();
+                            const current = modpack.description ?? "";
+                            if (trimmed !== current)
+                              saveModpack({ description: trimmed || null });
+                          }}
+                          placeholder="Add a description…"
+                          rows={3}
+                          className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none focus:border-emerald-600"
+                        />
+                        <span className="absolute bottom-2 right-2 text-xs text-zinc-600">
+                          {descriptionValue.length}/150
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-800" />
+                    <div className="p-4">
+                      <button
+                        onClick={() => {
+                          setShowChangelog((v) => !v);
+                          setSettingsOpen(false);
+                        }}
+                        className="w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                      >
+                        {showChangelog ? "Hide changelog" : "Changelog"}
+                      </button>
+                    </div>
+
+                    <div className="border-t border-zinc-800" />
+
+                    {/* Danger zone */}
+                    <div className="p-4">
+                      {deleteConfirming ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-zinc-400">
+                            Delete this modpack?
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => doDelete()}
+                              disabled={deleting}
+                              className="rounded-md bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-900 transition-all hover:bg-red-900/60 active:scale-95 disabled:opacity-40"
+                            >
+                              {deleting ? "Deleting…" : "Yes, delete"}
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirming(false)}
+                              className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirming(true)}
+                          className="w-full rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-500 transition-colors hover:border-red-900/50 hover:bg-red-950/20 hover:text-red-400"
+                        >
+                          Delete modpack
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
             <p className="mt-1 flex items-center gap-1 text-sm">
               <button
                 onClick={() => setSettingsOpen(true)}
@@ -1506,248 +2587,59 @@ export default function ModpackBuilder() {
                 {modpack.mods.length} mod{modpack.mods.length !== 1 ? "s" : ""}
               </span>
             </p>
+            {modpack.description && (
+              <p className="mt-1.5 max-w-lg text-sm text-zinc-400">
+                {modpack.description}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!modpack.source_share_code && (
             <button
               onClick={() => setShowAddMods((v) => !v)}
-              className={`rounded-md px-4 py-2 text-sm font-semibold text-white shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all active:scale-95 ${
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all active:scale-95 ${
                 showAddMods
                   ? "bg-emerald-600 hover:bg-emerald-500"
                   : "bg-emerald-500 hover:bg-emerald-400"
               }`}
             >
-              {showAddMods ? "Close search" : "Add mods"}
+              {showAddMods ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M12 4L4 12M4 4l8 8"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              )}
+              {showAddMods ? "Close" : "Add mods"}
             </button>
           )}
-          <div className="flex items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900">
-            <span className="px-4 py-2 font-mono text-sm text-zinc-400 select-all">
-              {modpack.share_code}
-            </span>
-            <button
-              onClick={handleCopy}
-              className={`border-l border-zinc-700 px-4 py-2 text-sm transition-all hover:bg-zinc-700 active:scale-95 ${
-                copied
-                  ? "bg-emerald-900 text-emerald-400"
-                  : "bg-zinc-800 text-zinc-400 hover:text-white"
-              }`}
-            >
-              {copied ? "Copied!" : "Copy code"}
-            </button>
-          </div>
           <button
             onClick={() => doExport()}
             disabled={exporting || modpack.mods.length === 0}
             className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white active:scale-95 disabled:opacity-40"
           >
-            {exporting ? "Exporting…" : "Export .zip"}
+            {exporting ? `Exporting ${modpack.mods.length} mod${modpack.mods.length !== 1 ? "s" : ""}…` : "Export"}
           </button>
-
-          {/* Settings */}
-          <div className="relative" ref={settingsRef}>
-            <button
-              onClick={() => setSettingsOpen((v) => !v)}
-              className={`rounded-lg border border-zinc-700 px-3 py-2 transition-all hover:bg-zinc-700 hover:text-white active:scale-95 ${
-                settingsOpen
-                  ? "bg-zinc-700 text-white"
-                  : "bg-zinc-800 text-zinc-400"
-              }`}
-              title="Modpack settings"
-            >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </button>
-
-            {settingsOpen && (
-              <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50">
-                <div className="border-b border-zinc-800 px-4 py-3">
-                  <p className="text-sm font-semibold text-white">Settings</p>
-                </div>
-
-                {/* Version & Loader */}
-                <div className="space-y-3 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    Version &amp; Loader
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <span className="w-14 shrink-0 text-xs text-zinc-500">Version</span>
-                    <select
-                      value={modpack.game_version}
-                      onChange={(e) => {
-                        saveModpack({ game_version: e.target.value });
-                        setFixStatus(null);
-                        if (modpack.mods.length > 0) setNeedsRelink(true);
-                      }}
-                      className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-600"
-                    >
-                      {MC_VERSIONS.map((v) => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="w-14 shrink-0 text-xs text-zinc-500">Loader</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {LOADERS.map((l) => (
-                        <button
-                          key={l}
-                          onClick={() => {
-                            saveModpack({ loader: l });
-                            setFixStatus(null);
-                            if (modpack.mods.length > 0) setNeedsRelink(true);
-                          }}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-all ${
-                            modpack.loader === l
-                              ? "bg-emerald-500 text-white"
-                              : "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"
-                          }`}
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-
-                <div className="border-t border-zinc-800" />
-
-                {/* Sync */}
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-white">Sync</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {modpack.source_share_code
-                          ? `Mirroring ${modpack.source_share_code}`
-                          : "Mirror a shared modpack's latest mods"}
-                      </p>
-                    </div>
-                    <div
-                      onClick={() => {
-                        if (modpack.source_share_code) {
-                          saveModpack({ source_share_code: null });
-                        }
-                      }}
-                      className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors duration-200 ${
-                        modpack.source_share_code
-                          ? "cursor-pointer bg-emerald-500"
-                          : "cursor-default bg-zinc-700"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${
-                          modpack.source_share_code
-                            ? "translate-x-4"
-                            : "translate-x-0.5"
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  {modpack.source_share_code ? (
-                    <div className="mt-3 rounded-lg border border-zinc-700 bg-zinc-800/40 px-3 py-2">
-                      <p className="text-xs text-zinc-500">Source</p>
-                      <p className="mt-0.5 font-mono text-sm text-zinc-300">
-                        {modpack.source_share_code}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-3">
-                      <input
-                        value={syncCode}
-                        onChange={(e) => setSyncCode(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && syncCode.trim()) {
-                            saveModpack({ source_share_code: syncCode.trim() });
-                            setSyncCode("");
-                          }
-                        }}
-                        placeholder="Enter share code…"
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 font-mono text-sm text-white placeholder-zinc-600 outline-none focus:border-emerald-600"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-zinc-800" />
-
-                {/* Danger zone */}
-                <div className="p-4">
-                  {deleteConfirming ? (
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs text-zinc-400">Delete this modpack?</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => doDelete()}
-                          disabled={deleting}
-                          className="rounded-md bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-900 transition-all hover:bg-red-900/60 active:scale-95 disabled:opacity-40"
-                        >
-                          {deleting ? "Deleting…" : "Yes, delete"}
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirming(false)}
-                          className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setDeleteConfirming(true)}
-                      className="w-full rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-500 transition-colors hover:border-red-900/50 hover:bg-red-950/20 hover:text-red-400"
-                    >
-                      Delete modpack
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Sync banner */}
-      {modpack.source_share_code && (
-        <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-blue-900/50 bg-blue-950/20 px-4 py-2.5">
-          <svg
-            className="shrink-0 text-blue-400"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-            <path d="M16 16h5v5" />
-          </svg>
-          <p className="text-xs text-blue-300">
-            Synced from{" "}
-            <span className="font-mono">{modpack.source_share_code}</span> —
-            mods always reflect the latest version
-          </p>
-        </div>
-      )}
-
-      {/* Panel — slides down, collapses up */}
+      {/* Panel —" slides down, collapses up */}
       <div
         className="grid transition-all duration-300 ease-out"
         style={{
@@ -1766,6 +2658,8 @@ export default function ModpackBuilder() {
               existingIds={existingIds}
               cacheKey={code}
               onClose={() => setShowAddMods(false)}
+              setMissingDeps={setMissingDeps}
+              addToasts={addToasts}
             />
           </div>
         </div>
@@ -1812,137 +2706,359 @@ export default function ModpackBuilder() {
             </button>
           )}
           <button
-            onClick={() => { setNeedsRelink(false); setFixStatus(null); setShowFailedMods(false); }}
+            onClick={() => {
+              setNeedsRelink(false);
+              setFixStatus(null);
+              setShowFailedMods(false);
+            }}
             className="shrink-0 text-amber-700 transition-colors hover:text-amber-400"
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path
+                d="M12 4L4 12M4 4l8 8"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         </div>
       )}
 
       {/* Failed mods panel */}
-      {showFailedMods && fixStatus?.failedMods && fixStatus.failedMods.length > 0 && (
-        <div className="mb-4 overflow-hidden rounded-xl border border-red-900/40">
-          <div className="border-b border-red-900/30 bg-red-950/20 px-4 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
-              Not found — {modpack.game_version} · {modpack.loader}
-            </p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-red-900/20 text-left text-xs font-medium uppercase tracking-wider text-zinc-600">
-                <th className="px-4 py-2">Mod</th>
-                <th className="px-4 py-2 text-right">Side</th>
-                <th className="w-8 px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-red-900/20">
-              {fixStatus.failedMods.map((mod) => (
-                <tr key={mod.id} className="bg-zinc-950">
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-3">
-                      {mod.icon_url ? (
-                        <img
-                          src={mod.icon_url}
-                          alt=""
-                          className="h-9 w-9 shrink-0 rounded-md object-cover opacity-40"
-                        />
-                      ) : (
-                        <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white opacity-40 ${modColor(mod.name)}`}
-                        >
-                          {mod.name[0].toUpperCase()}
-                        </div>
-                      )}
-                      <p className="font-medium text-zinc-500">{mod.name}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <span className="inline-flex items-center gap-1 rounded border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 text-xs font-medium text-red-400">
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                      </svg>
-                      Not found
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-zinc-600 transition-colors hover:text-emerald-400"
-                        title="View on Modrinth"
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                          <polyline points="15 3 21 3 21 9" />
-                          <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                      </a>
-                      <button
-                        onClick={() => removeFailedMod(mod.id)}
-                        className="text-zinc-600 transition-colors hover:text-red-400"
-                        title="Remove mod"
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                          <path d="M10 11v6M14 11v6" />
-                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
+      {showFailedMods &&
+        fixStatus?.failedMods &&
+        fixStatus.failedMods.length > 0 && (
+          <div className="mb-4 overflow-hidden rounded-xl border border-red-900/40">
+            <div className="border-b border-red-900/30 bg-red-950/20 px-4 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
+                Not found — {modpack.game_version} · {modpack.loader}
+              </p>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-red-900/20 text-left text-xs font-medium uppercase tracking-wider text-zinc-600">
+                  <th className="px-4 py-2">Mod</th>
+                  <th className="px-4 py-2 text-right">Side</th>
+                  <th className="w-8 px-4 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-red-900/20">
+                {fixStatus.failedMods.map((mod) => (
+                  <tr key={mod.id} className="bg-zinc-950">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        {mod.icon_url ? (
+                          <img
+                            src={mod.icon_url}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-md object-cover opacity-40"
+                          />
+                        ) : (
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white opacity-40 ${modColor(mod.name)}`}
+                          >
+                            {mod.name[0].toUpperCase()}
+                          </div>
+                        )}
+                        <p className="font-medium text-zinc-500">{mod.name}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className="inline-flex items-center gap-1 rounded border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 text-xs font-medium text-red-400">
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" />
+                          <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        Not found
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <a
+                          href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-zinc-600 transition-colors hover:text-emerald-400"
+                          title="View on Modrinth"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </a>
+                        <button
+                          onClick={() => removeFailedMod(mod.id)}
+                          className="text-zinc-600 transition-colors hover:text-red-400"
+                          title="Remove mod"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+      {/* Missing dependency banner */}
+      {missingDeps.length > 0 && (
+        <div
+          className={`overflow-hidden transition-all duration-300 ${depsShowing ? "max-h-24 opacity-100" : "max-h-0 opacity-0"}`}
+        >
+          <div className="mt-2 mb-3 flex items-center gap-3 rounded-lg border border-amber-900/30 bg-amber-950/15 px-4 py-2.5">
+            <p className="flex-1 text-xs text-amber-300">
+              Missing required{" "}
+              {missingDeps.length === 1 ? "dependency" : "dependencies"}:{" "}
+              <span className="font-medium">
+                {missingDeps.map((d) => d.name).join(", ")}
+              </span>
+            </p>
+            <button
+              onClick={() => addAllDeps(missingDeps)}
+              disabled={addingDeps}
+              className="shrink-0 rounded-md border border-amber-800/50 bg-amber-950/60 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-all hover:bg-amber-900/50 active:scale-95 disabled:opacity-40"
+            >
+              {addingDeps
+                ? "Adding…"
+                : `Add ${missingDeps.length} ${missingDeps.length === 1 ? "dependency" : "dependencies"}`}
+            </button>
+            <button
+              onClick={dismissDeps}
+              className="shrink-0 text-amber-700 transition-colors hover:text-amber-400"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M12 4L4 12M4 4l8 8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Table — always visible */}
-      <div className={showAddMods ? "mt-4" : ""}>
-        <ModTable
-          modpackId={modpack.id}
-          mods={modpack.mods}
-          readOnly={!!modpack.source_share_code}
-          loading={isPlaceholderData}
-          cacheKey={code}
-          failedProjectIds={failedProjectIds}
-        />
+      {/* Table + Changelog side by side */}
+      <div className={`flex items-start gap-4 ${showAddMods ? "mt-4" : ""}`}>
+        <div ref={leftColumnRef} className="min-w-0 flex-1">
+          <ModTable
+            modpackId={modpack.id}
+            mods={modpack.mods}
+            readOnly={!!modpack.source_share_code}
+            loading={isPlaceholderData}
+            cacheKey={code}
+            failedProjectIds={failedProjectIds}
+            addVersionToast={addVersionToast}
+          />
+
+          {/* Source changelog —" synced modpacks only, below the table */}
+          {modpack.source_share_code && (
+            <div className="mt-6 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+              <div className="border-b border-zinc-800 px-4 py-3">
+                <p className="text-sm font-semibold text-white">
+                  Source changelog
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Changes made to the original pack
+                </p>
+              </div>
+              {sourceChangelog.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-zinc-600">
+                  No changes recorded yet.
+                </p>
+              ) : (
+                <div className="divide-y divide-zinc-800/60">
+                  {sourceChangelog.map((entry) => (
+                    <ChangelogRow key={entry.id} entry={entry} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Changelog panel — owner only, slides in from right */}
+        {!modpack.source_share_code && (
+          <div
+            style={{
+              width: showChangelog ? 288 : 0,
+              flexShrink: 0,
+              overflow: "hidden",
+              transition: "width 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+          >
+            <div
+              style={{
+                width: 288,
+                transform: showChangelog ? "translateX(0)" : "translateX(100%)",
+                transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+            >
+              <div
+                className="flex flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900"
+                style={{ height: tableHeight || undefined }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+                  <p className="text-sm font-semibold text-white">Changelog</p>
+                  <div className="flex items-center gap-2">
+                    {/* Filter — cycles All → + → − → Updated */}
+                    {(() => {
+                      const FILTERS = [
+                        { val: "all",     label: "All",     cls: "border-zinc-700 bg-zinc-800 text-zinc-300" },
+                        { val: "added",   label: "Added",   cls: "border-emerald-900/60 bg-emerald-950 text-emerald-400" },
+                        { val: "removed", label: "Removed", cls: "border-red-900/60 bg-red-950 text-red-400" },
+                        { val: "updated", label: "Updated", cls: "border-blue-900/60 bg-blue-950 text-blue-400" },
+                      ];
+                      const idx = FILTERS.findIndex((f) => f.val === changelogFilter);
+                      const current = FILTERS[idx];
+                      const next = FILTERS[(idx + 1) % FILTERS.length];
+                      return (
+                        <button
+                          onClick={() => { setChangelogFilter(next.val); setChangelogPage(1); }}
+                          className={`w-16 rounded border py-1 text-center text-[11px] font-medium transition-colors ${current.cls}`}
+                        >
+                          {current.label}
+                        </button>
+                      );
+                    })()}
+                    {/* Close */}
+                    <button
+                      onClick={() => setShowChangelog(false)}
+                      className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                      >
+                        <path
+                          d="M12 4L4 12M4 4l8 8"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Scrollable list */}
+                <div
+                  ref={changelogScrollRef}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-zinc-800/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {filteredPaired.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-sm text-zinc-600">
+                      No changes recorded yet.
+                    </p>
+                  ) : (
+                    <>
+                      {visiblePaired.map((item) =>
+                        item.type === "pair" ? (
+                          <ChangelogUpdateRow
+                            key={`${item.added.id}-${item.removed.id}`}
+                            added={item.added}
+                            removed={item.removed}
+                          />
+                        ) : (
+                          <ChangelogRow key={item.entry.id} entry={item.entry} />
+                        )
+                      )}
+                      {hasMoreChangelog && (
+                        <div
+                          ref={changelogSentinelRef}
+                          className="py-3 text-center text-xs text-zinc-700"
+                        >
+                          Loading…
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+      {exportSkipped.length > 0 && (
+        <div className="fixed bottom-6 left-6 z-50 w-72 rounded-lg border border-amber-800/60 bg-amber-950/90 px-4 py-3 shadow-xl">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-semibold text-amber-300">
+              {exportSkipped.length} mod{exportSkipped.length !== 1 ? "s" : ""} couldn't be downloaded
+            </p>
+            <button
+              onClick={() => setExportSkipped([])}
+              className="shrink-0 text-amber-600 transition-colors hover:text-amber-400"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <ul className="mt-1.5 space-y-0.5">
+            {exportSkipped.map((name) => (
+              <li key={name} className="truncate text-xs text-amber-400/80">{name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {versionToasts.length > 0 && (
+        <div className="pointer-events-auto fixed right-6 top-6 z-50 flex flex-col items-end">
+          {versionToasts.map((t) => (
+            <VersionToast
+              key={t.id}
+              toast={t}
+              onDismiss={() => dismissVersionToast(t.id)}
+            />
+          ))}
+        </div>
+      )}
+      {toasts.length > 0 && (
+        <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end">
+          {toasts.map((t) => (
+            <Toast key={t.id} toast={t} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
