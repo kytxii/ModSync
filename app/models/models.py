@@ -14,6 +14,11 @@ class ModSide(str, enum.Enum):
     both = "both"
 
 
+class ChangelogAction(str, enum.Enum):
+    added = "added"
+    removed = "removed"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -41,11 +46,13 @@ class Modpack(Base):
     icon_color: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     icon_letter: Mapped[str | None] = mapped_column(String(2), nullable=True, default=None)
     icon_url: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    description: Mapped[str | None] = mapped_column(String(150), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="modpacks")
     mods: Mapped[list["ModpackMod"]] = relationship(back_populates="modpack", cascade="all, delete-orphan")
+    changelog: Mapped[list["ModpackChangelog"]] = relationship(back_populates="modpack", cascade="all, delete-orphan")
 
     @property
     def mod_count(self) -> int:
@@ -68,6 +75,22 @@ class ModpackMod(Base):
     categories: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     modpack: Mapped["Modpack"] = relationship(back_populates="mods")
+
+
+class ModpackChangelog(Base):
+    __tablename__ = "modpack_changelog"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    modpack_id: Mapped[int] = mapped_column(ForeignKey("modpacks.id", ondelete="CASCADE"))
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    action: Mapped[ChangelogAction] = mapped_column(Enum(ChangelogAction))
+    mod_name: Mapped[str] = mapped_column(String(255))
+    mod_icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    modrinth_project_id: Mapped[str] = mapped_column(String(64))
+    version_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    modpack: Mapped["Modpack"] = relationship(back_populates="changelog")
 
 
 class ServerProfile(Base):

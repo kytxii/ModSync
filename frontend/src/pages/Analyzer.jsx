@@ -8,6 +8,7 @@ import {
   createModpackFromAnalysis,
 } from "../api/analyzer";
 import SideBadge from "../components/SideBadge";
+import SortIcon from "../components/SortIcon";
 import { useAnalyzer } from "../context/AnalyzerContext";
 
 const SYMBOLS = ["·","✢","✣","✤","✥","✦","✧","✩","✦","✥","✤","✣","✢","·"];
@@ -48,12 +49,6 @@ const SORT_KEYS = {
   status: (r) => (r.found ? 0 : 1),
 };
 
-function SortIcon({ active, dir }) {
-  if (!active) return <span className="ml-1 text-zinc-700">↕</span>;
-  return (
-    <span className="ml-1 text-emerald-400">{dir === "asc" ? "↑" : "↓"}</span>
-  );
-}
 
 function ResultsTable({ data }) {
   const [page, setPage] = useState(1);

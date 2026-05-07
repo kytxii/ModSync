@@ -158,7 +158,7 @@ function ImportPanel({ open, onClose }) {
   const [name, setName] = useState('')
   const [isSync, setIsSync] = useState(false)
   const [preview, setPreview] = useState(null)
-  const [lookupError, setLookupError] = useState(false)
+  const [lookupError, setLookupError] = useState(null)
   const [looking, setLooking] = useState(false)
 
   useEffect(() => {
@@ -177,14 +177,14 @@ function ImportPanel({ open, onClose }) {
     const trimmed = code.trim()
     if (!trimmed) return
     setLooking(true)
-    setLookupError(false)
+    setLookupError(null)
     setPreview(null)
     try {
       const result = await getSharedModpack(trimmed)
       setPreview(result)
       setName(result.name)
-    } catch {
-      setLookupError(true)
+    } catch (err) {
+      setLookupError(err?.response?.status === 404 ? 'not_found' : 'server_error')
     } finally {
       setLooking(false)
     }
@@ -213,7 +213,7 @@ function ImportPanel({ open, onClose }) {
         <input
           ref={inputRef}
           value={code}
-          onChange={(e) => { setCode(e.target.value); setPreview(null); setLookupError(false) }}
+          onChange={(e) => { setCode(e.target.value); setPreview(null); setLookupError(null) }}
           onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
           placeholder="Paste a share code…"
           className="flex-1 bg-transparent font-mono text-base text-white placeholder-zinc-500 outline-none"
@@ -248,9 +248,14 @@ function ImportPanel({ open, onClose }) {
       </div>
 
       {/* Error */}
-      {lookupError && (
+      {lookupError === 'not_found' && (
         <p className="px-4 py-3 text-sm text-red-400">
           Share code not found. Double-check and try again.
+        </p>
+      )}
+      {lookupError === 'server_error' && (
+        <p className="px-4 py-3 text-sm text-red-400">
+          Something went wrong looking up that code. Try again.
         </p>
       )}
 
@@ -337,6 +342,9 @@ function ModpackCard({ modpack, onDelete, isNew = false }) {
               {modpack.game_version} · {modpack.loader} ·{' '}
               <span className="text-emerald-400">{modpack.mod_count} mod{modpack.mod_count !== 1 ? 's' : ''}</span>
             </p>
+            {modpack.description && (
+              <p className="mt-1 truncate text-xs text-zinc-500">{modpack.description}</p>
+            )}
           </div>
         </div>
 

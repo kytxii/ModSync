@@ -85,6 +85,17 @@ async def get_project_versions(project_id: str) -> list[dict]:
         return response.json()
 
 
+async def get_project_versions_filtered(project_id: str, game_version: str, loader: str) -> list[dict]:
+    params = {
+        "game_versions": json.dumps([game_version]),
+        "loaders": json.dumps([loader]),
+    }
+    async with httpx.AsyncClient(headers=_HEADERS, timeout=10.0) as client:
+        response = await client.get(f"{MODRINTH_BASE_URL}/project/{project_id}/version", params=params)
+        response.raise_for_status()
+        return response.json()
+
+
 async def get_latest_version(project_id: str, game_version: str, loader: str) -> dict | None:
     params = {
         "game_versions": json.dumps([game_version]),
