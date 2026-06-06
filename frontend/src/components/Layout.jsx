@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { loginWithGoogle, logout } from "../api/auth";
@@ -8,14 +8,56 @@ const NAV_LINKS = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/analyzer", label: "Analyzer" },
   { to: "/modpacks", label: "Modpacks" },
+  { to: "/servers", label: "Servers" },
 ];
+
+function AnimatedPage({ direction, drillDown }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const hiddenClass = drillDown
+    ? "opacity-0 scale-[0.98]"
+    : direction >= 0
+      ? "opacity-[0.35] translate-x-5"
+      : "opacity-[0.35] -translate-x-5";
+
+  return (
+    <div
+      className={`transition-all duration-150 ease-out ${visible ? "opacity-100 scale-100 translate-x-0" : hiddenClass}`}
+    >
+      <Outlet />
+    </div>
+  );
+}
 
 export default function Layout() {
   const { user, isLoading } = useAuth();
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef(null);
+  const slideDir = useRef(1);
+  const drillDown = useRef(false);
+  const prevIdxRef = useRef(
+    NAV_LINKS.findIndex((l) => location.pathname.startsWith(l.to)),
+  );
+
+  useEffect(() => {
+    const currIdx = NAV_LINKS.findIndex((l) =>
+      location.pathname.startsWith(l.to),
+    );
+    const prevIdx = prevIdxRef.current;
+    if (currIdx !== -1 && prevIdx !== -1) {
+      drillDown.current = currIdx === prevIdx;
+      slideDir.current = currIdx >= prevIdx ? 1 : -1;
+    }
+    if (currIdx !== -1) prevIdxRef.current = currIdx;
+  }, [location.pathname]);
 
   useEffect(() => {
     function handleClick(e) {
@@ -42,12 +84,38 @@ export default function Layout() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <rect x="1" y="1" width="6" height="6" rx="1.5" fill="white" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" fill="white" opacity="0.7" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" fill="white" opacity="0.7" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" fill="white" opacity="0.4" />
+                <rect
+                  x="9"
+                  y="1"
+                  width="6"
+                  height="6"
+                  rx="1.5"
+                  fill="white"
+                  opacity="0.7"
+                />
+                <rect
+                  x="1"
+                  y="9"
+                  width="6"
+                  height="6"
+                  rx="1.5"
+                  fill="white"
+                  opacity="0.7"
+                />
+                <rect
+                  x="9"
+                  y="9"
+                  width="6"
+                  height="6"
+                  rx="1.5"
+                  fill="white"
+                  opacity="0.4"
+                />
               </svg>
             </div>
-            <span className="text-lg font-bold tracking-tight text-white">ModSync</span>
+            <span className="text-lg font-bold tracking-tight text-white">
+              ModSync
+            </span>
           </NavLink>
 
           {/* Nav links — desktop */}
@@ -58,7 +126,9 @@ export default function Layout() {
                 to={to}
                 className={({ isActive }) =>
                   `relative flex items-center px-5 text-sm font-medium transition-colors ${
-                    isActive ? "text-white" : "text-zinc-400 hover:text-zinc-200"
+                    isActive
+                      ? "text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
                   }`
                 }
               >
@@ -79,7 +149,10 @@ export default function Layout() {
             {/* Desktop: user menu or sign-in */}
             {!isLoading &&
               (user ? (
-                <div className="relative h-16 hidden md:flex items-stretch" ref={menuRef}>
+                <div
+                  className="relative h-16 hidden md:flex items-stretch"
+                  ref={menuRef}
+                >
                   <button
                     onClick={() => setMenuOpen((v) => !v)}
                     className={`relative flex items-center gap-2.5 px-4 text-sm font-medium transition-colors ${menuOpen ? "text-white" : "text-zinc-400 hover:text-zinc-200"}`}
@@ -120,8 +193,12 @@ export default function Layout() {
                   {menuOpen && (
                     <div className="absolute right-0 top-[calc(100%+1px)] z-50 w-56 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50">
                       <div className="border-b border-zinc-800 px-4 py-3">
-                        <p className="truncate text-sm font-semibold text-white">{user.display_name}</p>
-                        <p className="truncate text-xs text-zinc-500 mt-0.5">{user.email}</p>
+                        <p className="truncate text-sm font-semibold text-white">
+                          {user.display_name}
+                        </p>
+                        <p className="truncate text-xs text-zinc-500 mt-0.5">
+                          {user.email}
+                        </p>
                       </div>
                       <div className="p-1.5">
                         <button
@@ -150,11 +227,27 @@ export default function Layout() {
               aria-label="Toggle menu"
             >
               {mobileNavOpen ? (
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
                   <path d="M4 4l10 10M14 4L4 14" />
                 </svg>
               ) : (
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
                   <line x1="3" y1="5" x2="15" y2="5" />
                   <line x1="3" y1="9" x2="15" y2="9" />
                   <line x1="3" y1="13" x2="15" y2="13" />
@@ -203,12 +296,19 @@ export default function Layout() {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-white">{user.display_name}</p>
-                          <p className="truncate text-xs text-zinc-500">{user.email}</p>
+                          <p className="truncate text-sm font-medium text-white">
+                            {user.display_name}
+                          </p>
+                          <p className="truncate text-xs text-zinc-500">
+                            {user.email}
+                          </p>
                         </div>
                       </div>
                       <button
-                        onClick={() => { setMobileNavOpen(false); handleLogout(); }}
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          handleLogout();
+                        }}
                         className="w-full rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
                       >
                         Sign out
@@ -216,7 +316,10 @@ export default function Layout() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => { setMobileNavOpen(false); loginWithGoogle(); }}
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        loginWithGoogle();
+                      }}
                       className="w-full rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-white transition-all hover:bg-emerald-400"
                     >
                       Sign in with Google
@@ -229,8 +332,12 @@ export default function Layout() {
         )}
       </nav>
 
-      <main className="mx-auto max-w-7xl px-6 py-5">
-        <Outlet />
+      <main className="mx-auto max-w-7xl px-6 pt-4">
+        <AnimatedPage
+          key={location.key}
+          direction={slideDir.current}
+          drillDown={drillDown.current}
+        />
       </main>
     </div>
   );

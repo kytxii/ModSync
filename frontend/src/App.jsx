@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard'
 import Analyzer from './pages/Analyzer'
 import Modpacks from './pages/Modpacks'
 import ModpackBuilder from './pages/ModpackBuilder'
+import Servers from './pages/Servers'
+import ServerBuilder from './pages/ServerBuilder'
 import { AnalyzerProvider } from './context/AnalyzerContext'
 
 const queryClient = new QueryClient({
@@ -35,6 +37,8 @@ export default function App() {
               <Route path="/analyzer" element={<Analyzer />} />
               <Route path="/modpacks" element={<Modpacks />} />
               <Route path="/modpacks/:code" element={<ModpackBuilder />} />
+              <Route path="/servers" element={<Servers />} />
+              <Route path="/servers/:code" element={<ServerBuilder />} />
             </Route>
           </Route>
         </Routes>

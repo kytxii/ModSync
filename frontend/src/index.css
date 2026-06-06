@@ -5,7 +5,37 @@
 html {
   /* Scale everything proportionally with viewport width.
      0.8333vw = 16px at 1920px (1080p), ~21px at 2560px (1440p), capped at 24px for 4K+ */
-  font-size: clamp(14px, 0.8333vw, 24px);
+  font-size: clamp(18px, 0.9375vw, 24px);
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes wave-scroll {
+  from { transform: translateX(0px); }
+  to   { transform: translateX(-40px); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-5px); }
+  30%       { transform: translateX(5px); }
+  45%       { transform: translateX(-4px); }
+  60%       { transform: translateX(4px); }
+  75%       { transform: translateX(-2px); }
+  90%       { transform: translateX(2px); }
+}
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes drain {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+.animate-drain {
+  animation: drain 5s linear forwards;
 }
 
 .scrollbar-dark {

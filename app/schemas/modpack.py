@@ -93,6 +93,8 @@ class ModpackResponse(BaseModel):
     loader: str
     share_code: str
     source_share_code: str | None = None
+    source_server_id: int | None = None
+    source_server_share_code: str | None = None
     icon_color: str | None = None
     icon_letter: str | None = None
     icon_url: str | None = None
@@ -111,6 +113,8 @@ class ModpackSummary(BaseModel):
     loader: str
     share_code: str
     source_share_code: str | None = None
+    source_server_id: int | None = None
+    source_server_share_code: str | None = None
     icon_color: str | None = None
     icon_letter: str | None = None
     icon_url: str | None = None

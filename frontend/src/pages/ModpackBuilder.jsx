@@ -19,8 +19,9 @@ import {
 import { searchMods, getLatestVersion, getCategories } from "../api/mods";
 import SideBadge from "../components/SideBadge";
 import SortIcon from "../components/SortIcon";
-
-const PAGE_SIZE = 10;
+import AddModsPanel from "../components/AddModsPanel";
+import ModTable from "../components/ModTable";
+import { useModToasts, ModToastsPortal } from "../components/ModToasts";
 
 const LOADERS = ["fabric", "forge", "quilt", "neoforge"];
 const MC_VERSIONS = [
@@ -42,21 +43,6 @@ const MC_VERSIONS = [
   "1.16.5",
 ];
 
-const HIDDEN_CATEGORIES = new Set([
-  "fabric",
-  "forge",
-  "quilt",
-  "neoforge",
-  "modloader",
-  "rift",
-  "liteloader",
-  "bukkit",
-  "spigot",
-  "paper",
-  "purpur",
-  "folia",
-  "cursed",
-]);
 const MOD_COLORS = [
   "bg-emerald-700",
   "bg-blue-700",
@@ -64,30 +50,6 @@ const MOD_COLORS = [
   "bg-orange-700",
   "bg-pink-700",
   "bg-teal-700",
-];
-
-// Most meaningful/specific categories first —" determines grid table grouping and badge order
-const CATEGORY_PRIORITY = [
-  "library",
-  "optimization",
-  "game-mechanics",
-  "magic",
-  "worldgen",
-  "technology",
-  "equipment",
-  "decoration",
-  "food",
-  "mobs",
-  "utility",
-  "transportation",
-  "social",
-  "economy",
-  "minigame",
-  "storage",
-  "management",
-  "adventure",
-  "datapack",
-  "misc",
 ];
 
 function relativeTime(dateStr) {
@@ -102,11 +64,6 @@ function relativeTime(dateStr) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-function categoryRank(c) {
-  const i = CATEGORY_PRIORITY.indexOf(c);
-  return i === -1 ? 999 : i;
-}
-
 function modColor(name) {
   return MOD_COLORS[name.charCodeAt(0) % MOD_COLORS.length];
 }
@@ -119,12 +76,6 @@ function deriveSide(hit) {
   if (hit.server_side === "unsupported") return "client";
   if (hit.client_side === "unsupported") return "server";
   return "both";
-}
-function displayCategories(categories) {
-  return categories
-    .filter((c) => !HIDDEN_CATEGORIES.has(c))
-    .sort((a, b) => categoryRank(a) - categoryRank(b))
-    .slice(0, 2);
 }
 
 function VersionTypeBadge({ type }) {
@@ -159,47 +110,6 @@ function Chevron({ open }) {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function Toast({ toast }) {
-  const [entered, setEntered] = useState(false);
-  useEffect(() => {
-    let raf1, raf2;
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setEntered(true));
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-    };
-  }, []);
-  const active = entered && !toast.fading;
-  return (
-    <div
-      className={`overflow-hidden transition-all duration-300 ${active ? "max-h-10 mb-2.5" : "max-h-0 mb-0 delay-300"}`}
-    >
-      <div
-        className={`flex items-center gap-2.5 transition-all duration-300 ${active ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"}`}
-      >
-        {toast.icon_url ? (
-          <img
-            src={toast.icon_url}
-            alt=""
-            className="h-5 w-5 shrink-0 rounded object-cover"
-          />
-        ) : (
-          <div
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white ${modColor(toast.name)}`}
-          >
-            {toast.name[0].toUpperCase()}
-          </div>
-        )}
-        <span className="text-sm text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
-          {toast.name} <span className="text-zinc-500">added</span>
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -305,460 +215,6 @@ function VersionToast({ toast, onDismiss }) {
         </a>
       </div>
     </div>
-  );
-}
-
-function AddModsPanel({
-  open,
-  modpackId,
-  gameVersion,
-  loader,
-  existingIds,
-  cacheKey,
-  onClose,
-  setMissingDeps,
-  addToasts,
-}) {
-  const queryClient = useQueryClient();
-  const inputRef = useRef(null);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selected, setSelected] = useState(new Set());
-  const [activeCategory, setActiveCategory] = useState(null);
-
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [activeSide, setActiveSide] = useState(null);
-  const [sideOpen, setSideOpen] = useState(false);
-  const [sortIndex, setSortIndex] = useState("relevance");
-
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), 350);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  const sentinelRef = useRef(null);
-  const scrollRef = useRef(null);
-
-  const { data: categoriesData } = useQuery({
-    queryKey: ["mod-categories"],
-    queryFn: getCategories,
-    staleTime: Infinity,
-  });
-
-  const categories = categoriesData ?? [];
-
-  const enabled =
-    debouncedQuery.length >= 2 ||
-    activeCategory !== null ||
-    activeSide !== null;
-
-  const {
-    data,
-    isFetching,
-    isFetchingNextPage,
-    fetchNextPage,
-    hasNextPage,
-  } = useInfiniteQuery({
-    queryKey: [
-      "mod-search",
-      debouncedQuery,
-      gameVersion,
-      loader,
-      activeCategory,
-      activeSide,
-      sortIndex,
-    ],
-    queryFn: ({ pageParam = 0 }) =>
-      searchMods({
-        query: debouncedQuery,
-        game_version: gameVersion,
-        loader,
-        category: activeCategory ?? undefined,
-        side: activeSide ?? undefined,
-        index: sortIndex,
-        limit: PAGE_SIZE,
-        offset: pageParam,
-      }),
-    getNextPageParam: (lastPage, pages) =>
-      lastPage.hits.length === PAGE_SIZE ? pages.length * PAGE_SIZE : undefined,
-    initialPageParam: 0,
-    enabled,
-  });
-
-  const hits = data?.pages.flatMap((p) => p.hits) ?? [];
-
-  useEffect(() => {
-    if (!sentinelRef.current || !hasNextPage || isFetchingNextPage) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) fetchNextPage(); },
-      { root: scrollRef.current, threshold: 0 },
-    );
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  function toggle(projectId) {
-    if (existingIds.has(projectId)) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(projectId) ? next.delete(projectId) : next.add(projectId);
-      return next;
-    });
-  }
-
-  const { mutate: addSelected, isPending: adding } = useMutation({
-    mutationFn: async (toAdd) => {
-      const result = await addModsBulk(
-        modpackId,
-        toAdd.map((hit) => ({
-          modrinth_project_id: hit.project_id,
-          name: hit.title,
-          side: deriveSide(hit),
-          icon_url: hit.icon_url ?? null,
-          categories: hit.categories ?? [],
-        })),
-      );
-      return { missing: result.missing_dependencies };
-    },
-    onMutate: (toAdd) => {
-      const previousData = queryClient.getQueryData(["modpack", cacheKey]);
-      queryClient.setQueryData(["modpack", cacheKey], (old) => {
-        if (!old) return old;
-        const tempMods = toAdd.map((hit) => ({
-          id: `temp-${hit.project_id}`,
-          modrinth_project_id: hit.project_id,
-          version_id: "",
-          name: hit.title,
-          side: deriveSide(hit),
-          icon_url: hit.icon_url ?? null,
-          version_number: null,
-          version_type: null,
-          filename: null,
-          categories: hit.categories ?? [],
-        }));
-        return { ...old, mods: [...old.mods, ...tempMods] };
-      });
-      setSelected(new Set());
-      addToasts(
-        toAdd.map((h) => ({ name: h.title, icon_url: h.icon_url ?? null })),
-      );
-      return { previousData };
-    },
-    onSuccess: ({ missing }) => {
-      queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
-      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpackId] });
-      setMissingDeps(missing);
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previousData)
-        queryClient.setQueryData(["modpack", cacheKey], ctx.previousData);
-    },
-  });
-
-  return (
-    <>
-      <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950">
-        {/* Search bar */}
-        <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-4">
-          <svg
-            className="shrink-0 text-zinc-300"
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Modrinth…"
-            className="flex-1 bg-transparent text-base text-white placeholder-zinc-500 outline-none"
-          />
-          {isFetching && !isFetchingNextPage && (
-            <span className="shrink-0 animate-pulse text-xs text-zinc-400">
-              Searching…
-            </span>
-          )}
-          {/* Sort toggle */}
-          <div className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-700 text-xs">
-            {["relevance", "downloads"].map((opt) => (
-              <button
-                key={opt}
-                onClick={() => setSortIndex(opt)}
-                className={`px-3 py-1.5 capitalize transition-colors ${
-                  sortIndex === opt
-                    ? "bg-zinc-700 text-white"
-                    : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-          {selected.size > 0 && (
-            <button
-              onClick={() =>
-                addSelected(hits.filter((h) => selected.has(h.project_id)))
-              }
-              disabled={adding}
-              className="shrink-0 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all hover:bg-emerald-400 active:scale-95 disabled:opacity-40"
-            >
-              {adding
-                ? "Adding…"
-                : `Add ${selected.size} mod${selected.size !== 1 ? "s" : ""}`}
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M12 4L4 12M4 4l8 8"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-start border-b border-zinc-800">
-          <div className="flex-1 bg-zinc-900">
-            <button
-              onClick={() => setCategoriesOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                  Categories
-                </span>
-                {activeCategory && (
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
-                    {activeCategory}
-                  </span>
-                )}
-              </div>
-              <Chevron open={categoriesOpen} />
-            </button>
-            {categoriesOpen && categories.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
-                {categories.map((cat) => (
-                  <button
-                    key={cat.name}
-                    onClick={() =>
-                      setActiveCategory((prev) =>
-                        prev === cat.name ? null : cat.name,
-                      )
-                    }
-                    className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
-                      activeCategory === cat.name
-                        ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
-                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
-                    }`}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="w-px self-stretch bg-zinc-800" />
-          <div className="w-52 bg-zinc-900">
-            <button
-              onClick={() => setSideOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-4 py-2.5 transition-colors hover:bg-zinc-800"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                  Side
-                </span>
-                {activeSide && (
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs capitalize text-emerald-400 ring-1 ring-emerald-500/40">
-                    {activeSide}
-                  </span>
-                )}
-              </div>
-              <Chevron open={sideOpen} />
-            </button>
-            {sideOpen && (
-              <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 bg-zinc-950 px-4 py-3">
-                {["client", "server", "both"].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() =>
-                      setActiveSide((prev) => (prev === s ? null : s))
-                    }
-                    className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
-                      activeSide === s
-                        ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
-                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:text-white"
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Results */}
-        <div ref={scrollRef} className="scrollbar-dark max-h-[55vh] overflow-y-auto divide-y divide-zinc-800 overscroll-contain">
-          {debouncedQuery.length < 2 && !activeCategory && !activeSide && (
-            <div className="flex flex-col items-center gap-3 py-12 text-zinc-500">
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              <p className="text-sm">Type to search Modrinth</p>
-            </div>
-          )}
-          {enabled && !isFetching && hits.length === 0 && (
-            <p className="py-16 text-center text-sm text-zinc-500">
-              No results
-            </p>
-          )}
-          {hits.map((hit) => {
-            const already = existingIds.has(hit.project_id);
-            const isSelected = selected.has(hit.project_id);
-            const cats = displayCategories(hit.categories ?? []);
-            return (
-              <div
-                key={hit.project_id}
-                onClick={() => toggle(hit.project_id)}
-                className={`relative flex items-center gap-4 px-4 py-3.5 transition-colors ${
-                  already
-                    ? "cursor-default opacity-30"
-                    : isSelected
-                    ? "cursor-pointer bg-emerald-950/40"
-                    : "cursor-pointer hover:bg-zinc-900"
-                }`}
-              >
-                {isSelected && (
-                  <div className="absolute inset-y-0 left-0 w-0.5 bg-emerald-500" />
-                )}
-
-                {/* Checkbox */}
-                <div
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                    already
-                      ? "border-zinc-600 bg-zinc-700"
-                      : isSelected
-                        ? "border-emerald-500 bg-emerald-500"
-                        : "border-zinc-600"
-                  }`}
-                >
-                  {(already || isSelected) && (
-                    <svg width="9" height="7" viewBox="0 0 8 6" fill="none">
-                      <path
-                        d="M1 3l2 2 4-4"
-                        stroke="white"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </div>
-
-                {/* Icon */}
-                {hit.icon_url ? (
-                  <img
-                    src={hit.icon_url}
-                    alt=""
-                    className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-white/5"
-                  />
-                ) : (
-                  <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white ${modColor(hit.title)}`}
-                  >
-                    {hit.title[0].toUpperCase()}
-                  </div>
-                )}
-
-                {/* Info */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-semibold text-white">
-                      {hit.title}
-                    </p>
-                    <SideBadge side={deriveSide(hit)} />
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-zinc-400 leading-relaxed">
-                    {hit.description}
-                  </p>
-                  {cats.length > 0 && (
-                    <div className="mt-1.5 flex gap-1">
-                      {cats.map((c) => (
-                        <span
-                          key={c}
-                          className="rounded bg-zinc-700 px-1.5 py-0.5 text-xs capitalize text-zinc-200"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Downloads */}
-                <div className="shrink-0 text-right">
-                  <span className="text-sm font-semibold text-zinc-200">
-                    {fmtDownloads(hit.downloads)}
-                  </span>
-                  <p className="text-xs text-zinc-500">downloads</p>
-                </div>
-              </div>
-            );
-          })}
-          {isFetchingNextPage &&
-            [...Array(3)].map((_, i) => (
-              <div key={`skel-${i}`} className="flex items-center gap-4 px-4 py-3.5">
-                <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-zinc-800" />
-                <div className="h-12 w-12 shrink-0 animate-pulse rounded-xl bg-zinc-800" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-32 animate-pulse rounded bg-zinc-800" />
-                  <div className="h-3 w-52 animate-pulse rounded bg-zinc-800" />
-                </div>
-              </div>
-            ))}
-          {!isFetchingNextPage && hasNextPage && (
-            <div ref={sentinelRef} className="h-px" />
-          )}
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -1000,79 +456,6 @@ function ModpackIconWidget({ modpack, onSave }) {
         </div>
       )}
     </div>
-  );
-}
-
-function groupByCategory(mods) {
-  const map = new Map();
-  const seen = new Set();
-  for (const mod of mods) {
-    if (seen.has(mod.modrinth_project_id)) continue;
-    seen.add(mod.modrinth_project_id);
-    const key = displayCategories(mod.categories ?? [])[0] ?? "Uncategorized";
-    const bucket = map.get(key) ?? [];
-    bucket.push(mod);
-    map.set(key, bucket);
-  }
-  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-}
-
-function IconList() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    >
-      <line x1="2" y1="4" x2="13" y2="4" />
-      <line x1="2" y1="7.5" x2="13" y2="7.5" />
-      <line x1="2" y1="11" x2="13" y2="11" />
-    </svg>
-  );
-}
-
-function IconGrid() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="1.5" y="1.5" width="5" height="5" rx="1" />
-      <rect x="8.5" y="1.5" width="5" height="5" rx="1" />
-      <rect x="1.5" y="8.5" width="5" height="5" rx="1" />
-      <rect x="8.5" y="8.5" width="5" height="5" rx="1" />
-    </svg>
-  );
-}
-
-function FailedBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 rounded border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 text-xs font-medium text-red-400">
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-    </span>
   );
 }
 
@@ -1334,510 +717,6 @@ function VersionPickerPopover({
   );
 }
 
-function ModTable({
-  modpackId,
-  mods,
-  readOnly,
-  loading,
-  cacheKey,
-  failedProjectIds,
-  addVersionToast,
-}) {
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [editMode, setEditMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [viewMode, setViewMode] = useState("list");
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState("asc");
-
-  useEffect(() => {
-    setSortCol(null);
-    setSortDir("asc");
-    setPage(1);
-  }, [modpackId]);
-
-  const MOD_SORT_KEYS = {
-    name:       (m) => m.name.toLowerCase(),
-    version:    (m) => m.version_number ?? "￿",
-    side:       (m) => ({ client: 0, server: 1, both: 2 }[m.side] ?? 3),
-    categories: (m) => displayCategories(m.categories ?? [])[0] ?? "￿",
-  };
-
-  function handleSort(col) {
-    if (sortCol === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortCol(col);
-      setSortDir("asc");
-    }
-    setPage(1);
-  }
-
-  const sortedMods = sortCol
-    ? [...mods].sort((a, b) => {
-        const va = MOD_SORT_KEYS[sortCol](a);
-        const vb = MOD_SORT_KEYS[sortCol](b);
-        const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-        return sortDir === "asc" ? cmp : -cmp;
-      })
-    : mods;
-
-  const totalPages = Math.max(1, Math.ceil(mods.length / PAGE_SIZE));
-  const pageMods = sortedMods.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const { mutate: bulkRemove, isPending: removing } = useMutation({
-    mutationFn: () =>
-      Promise.all([...selectedIds].map((id) => removeMod(modpackId, id))),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["modpack", cacheKey] });
-      queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpackId] });
-      setSelectedIds(new Set());
-      setEditMode(false);
-    },
-  });
-
-  function toggleSelect(id) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function exitEdit() {
-    setEditMode(false);
-    setSelectedIds(new Set());
-  }
-
-  function switchView(mode) {
-    if (mode === "grid") exitEdit();
-    setViewMode(mode);
-  }
-
-  const colSpan = 7;
-
-  return (
-    <div>
-      {/* Table toolbar */}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        {/* Left: edit controls (list only) */}
-        <div className="flex items-center gap-2">
-          {!readOnly &&
-            viewMode === "list" &&
-            (editMode ? (
-              <>
-                {selectedIds.size > 0 && (
-                  <button
-                    onClick={() => bulkRemove()}
-                    disabled={removing}
-                    className="inline-flex items-center justify-center leading-none rounded border border-red-900 bg-red-950/40 px-2 py-1 text-xs font-medium text-red-400 transition-all hover:bg-red-900/50 active:scale-95 disabled:opacity-40"
-                  >
-                    {removing
-                      ? "Removing…"
-                      : `Remove ${selectedIds.size} mod${selectedIds.size !== 1 ? "s" : ""}`}
-                  </button>
-                )}
-                <button
-                  onClick={exitEdit}
-                  title="Cancel"
-                  className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path
-                      d="M12 4L4 12M4 4l8 8"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setEditMode(true)}
-                title="Edit mods"
-                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
-            ))}
-        </div>
-
-        {/* Right: pagination + view toggle (always stable) */}
-        <div className="flex items-center gap-3">
-          {viewMode === "list" && totalPages > 1 && (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white disabled:opacity-30"
-              >
-                ←
-              </button>
-              <span className="px-1 text-xs text-zinc-500">
-                {(page - 1) * PAGE_SIZE + 1}—
-                {Math.min(page * PAGE_SIZE, mods.length)} of {mods.length}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="inline-flex items-center justify-center leading-none rounded border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-white disabled:opacity-30"
-              >
-                →
-              </button>
-            </div>
-          )}
-          <div className="flex overflow-hidden rounded border border-zinc-700">
-            {[
-              ["list", <IconList />],
-              ["grid", <IconGrid />],
-            ].map(([mode, icon]) => (
-              <button
-                key={mode}
-                onClick={() => switchView(mode)}
-                className={`inline-flex items-center justify-center px-2 py-1 transition-colors ${
-                  viewMode === mode
-                    ? "bg-zinc-700 text-white"
-                    : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Views —" carousel: list left slot, grid right slot; only transform moves */}
-      <div className="overflow-hidden">
-        <div
-          style={{
-            display: "flex",
-            width: "200%",
-            transform:
-              viewMode === "list" ? "translateX(0)" : "translateX(-50%)",
-            transition: "transform 250ms ease",
-            willChange: "transform",
-          }}
-        >
-          {/* List view — left slot */}
-          <div style={{ width: "50%" }}>
-            <div className="overflow-hidden rounded-xl border border-zinc-800">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px] text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                      <th className="p-0">
-                        <div
-                          style={{
-                            overflow: "hidden",
-                            maxWidth: editMode ? "3rem" : "0",
-                            transition: "max-width 250ms cubic-bezier(0.4,0,0.2,1)",
-                          }}
-                        >
-                          <div className="w-12 py-2" />
-                        </div>
-                      </th>
-                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("name")}>
-                        Mod <SortIcon active={sortCol === "name"} dir={sortDir} />
-                      </th>
-                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("version")}>
-                        Version <SortIcon active={sortCol === "version"} dir={sortDir} />
-                      </th>
-                      <th className="cursor-pointer select-none px-4 py-2 hover:text-zinc-300" onClick={() => handleSort("categories")}>
-                        Categories <SortIcon active={sortCol === "categories"} dir={sortDir} />
-                      </th>
-                      <th className="px-4 py-2">Filename</th>
-                      <th className="cursor-pointer select-none px-4 py-2 text-right hover:text-zinc-300" onClick={() => handleSort("side")}>
-                        Side <SortIcon active={sortCol === "side"} dir={sortDir} />
-                      </th>
-                      <th className="w-8 px-4 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50">
-                    {loading &&
-                      [...Array(4)].map((_, i) => (
-                        <tr key={i} className="bg-zinc-950">
-                          <td className="px-4 py-3" colSpan={colSpan}>
-                            <div className="flex items-center gap-3">
-                              <div className="h-9 w-9 animate-pulse rounded-lg bg-zinc-800" />
-                              <div className="space-y-1.5">
-                                <div className="h-3.5 w-32 animate-pulse rounded bg-zinc-800" />
-                                <div className="h-3 w-48 animate-pulse rounded bg-zinc-800" />
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    {!loading && mods.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={colSpan}
-                          className="px-4 py-12 text-center text-sm text-zinc-600"
-                        >
-                          No mods yet — click Add mods to get started.
-                        </td>
-                      </tr>
-                    )}
-                    {!loading &&
-                      pageMods.map((mod) => {
-                        const cats = displayCategories(mod.categories ?? []);
-                        const isSelected = selectedIds.has(mod.id);
-                        return (
-                          <tr
-                            key={mod.id}
-                            onClick={
-                              editMode ? () => toggleSelect(mod.id) : undefined
-                            }
-                            className={`bg-zinc-950 transition-colors hover:bg-zinc-900/60 ${editMode ? "cursor-pointer" : ""} ${isSelected ? "bg-zinc-900/80" : ""}`}
-                          >
-                            <td className="p-0">
-                              <div
-                                style={{
-                                  overflow: "hidden",
-                                  maxWidth: editMode ? "3rem" : "0",
-                                  transition: "max-width 250ms cubic-bezier(0.4,0,0.2,1)",
-                                }}
-                              >
-                                <div className="px-4 py-2">
-                                  <div
-                                    className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${isSelected ? "border-red-500 bg-red-500" : "border-zinc-600"}`}
-                                  >
-                                    {isSelected && (
-                                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                                        <path
-                                          d="M1 3l2 2 4-4"
-                                          stroke="white"
-                                          strokeWidth="1.2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <div className="flex items-center gap-3">
-                                {mod.icon_url ? (
-                                  <img
-                                    src={mod.icon_url}
-                                    alt=""
-                                    className="h-10 w-10 shrink-0 rounded-md object-cover"
-                                  />
-                                ) : (
-                                  <div
-                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
-                                  >
-                                    {mod.name[0].toUpperCase()}
-                                  </div>
-                                )}
-                                <p className="truncate font-medium text-white">
-                                  {mod.name}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <VersionPickerPopover
-                                mod={mod}
-                                modpackId={modpackId}
-                                cacheKey={cacheKey}
-                                readOnly={readOnly}
-                                addVersionToast={addVersionToast}
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <div className="flex flex-wrap gap-1">
-                                {cats.length > 0 ? (
-                                  cats.map((cat) => (
-                                    <span
-                                      key={cat}
-                                      className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize text-zinc-400"
-                                    >
-                                      {cat}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-zinc-700">
-                                    —
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <span className="font-mono text-xs text-zinc-500">
-                                {mod.filename ?? "—"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2 text-right">
-                              {failedProjectIds?.has(
-                                mod.modrinth_project_id,
-                              ) ? (
-                                <FailedBadge />
-                              ) : (
-                                <SideBadge side={mod.side} />
-                              )}
-                            </td>
-                            <td className="px-4 py-2">
-                              <a
-                                href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-zinc-500 transition-colors hover:text-emerald-400"
-                                title="View on Modrinth"
-                              >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                  <polyline points="15 3 21 3 21 9" />
-                                  <line x1="10" y1="14" x2="21" y2="3" />
-                                </svg>
-                              </a>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          {/* Grid view — right slot */}
-          <div style={{ width: "50%" }}>
-            <div>
-              {loading && (
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-                  {[...Array(4)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-48 animate-pulse rounded-xl bg-zinc-800"
-                    />
-                  ))}
-                </div>
-              )}
-              {!loading && mods.length === 0 && (
-                <div className="rounded-xl border border-zinc-800 px-4 py-12 text-center text-sm text-zinc-600">
-                  No mods yet — click Add mods to get started.
-                </div>
-              )}
-              {!loading && mods.length > 0 && (
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-                  {groupByCategory(mods).map(([category, catMods]) => (
-                    <div
-                      key={category}
-                      className="overflow-hidden rounded-xl border border-zinc-800"
-                    >
-                      <div className="border-b border-zinc-800 bg-zinc-900 px-4 py-2.5 flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 capitalize">
-                          {category}
-                        </span>
-                        <span className="text-xs text-zinc-600">
-                          {catMods.length}
-                        </span>
-                      </div>
-                      <table className="w-full table-fixed text-sm">
-                        <colgroup>
-                          <col className="w-full" />
-                          <col className="w-16" />
-                          <col className="w-8" />
-                        </colgroup>
-                        <tbody className="divide-y divide-zinc-800/50">
-                          {catMods.map((mod) => (
-                            <tr
-                              key={mod.id}
-                              className="bg-zinc-950 transition-colors hover:bg-zinc-900/60"
-                            >
-                              <td className="px-3 py-2">
-                                <div className="flex min-w-0 items-center gap-2.5">
-                                  {mod.icon_url ? (
-                                    <img
-                                      src={mod.icon_url}
-                                      alt=""
-                                      className="h-10 w-10 shrink-0 rounded-md object-cover"
-                                    />
-                                  ) : (
-                                    <div
-                                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white ${modColor(mod.name)}`}
-                                    >
-                                      {mod.name[0].toUpperCase()}
-                                    </div>
-                                  )}
-                                  <p className="truncate text-xs font-medium text-white">
-                                    {mod.name}
-                                  </p>
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {failedProjectIds?.has(
-                                  mod.modrinth_project_id,
-                                ) ? (
-                                  <FailedBadge />
-                                ) : (
-                                  <SideBadge side={mod.side} />
-                                )}
-                              </td>
-                              <td className="px-3 py-2">
-                                <a
-                                  href={`https://modrinth.com/mod/${mod.modrinth_project_id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-zinc-600 transition-colors hover:text-emerald-400"
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                    <polyline points="15 3 21 3 21 9" />
-                                    <line x1="10" y1="14" x2="21" y2="3" />
-                                  </svg>
-                                </a>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function pairChangelog(entries) {
   const byProject = new Map();
   entries.forEach((entry, idx) => {
@@ -1971,7 +850,7 @@ export default function ModpackBuilder() {
   const [showAddMods, setShowAddMods] = useState(false);
   const [missingDeps, setMissingDeps] = useState([]);
   const [depsShowing, setDepsShowing] = useState(false);
-  const [toasts, setToasts] = useState([]);
+  const { toasts, add: addToasts } = useModToasts();
   const [versionToasts, setVersionToasts] = useState([]);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameValue, setNameValue] = useState("");
@@ -1993,31 +872,6 @@ export default function ModpackBuilder() {
   const [descriptionValue, setDescriptionValue] = useState("");
   const settingsRef = useRef(null);
 
-  function addToasts(mods) {
-    if (!mods.length) return;
-    mods.forEach((m, i) => {
-      setTimeout(() => {
-        const item = {
-          id: crypto.randomUUID(),
-          name: m.name,
-          icon_url: m.icon_url ?? null,
-          fading: false,
-        };
-        setToasts((prev) => [...prev, item]);
-        setTimeout(
-          () =>
-            setToasts((prev) =>
-              prev.map((t) => (t.id === item.id ? { ...t, fading: true } : t)),
-            ),
-          2000,
-        );
-        setTimeout(
-          () => setToasts((prev) => prev.filter((t) => t.id !== item.id)),
-          2650,
-        );
-      }, i * 120);
-    });
-  }
 
   function addVersionToast({
     name,
@@ -2589,7 +1443,22 @@ export default function ModpackBuilder() {
             </p>
             {modpack.description && (
               <p className="mt-1.5 max-w-lg text-sm text-zinc-400">
-                {modpack.description}
+                {modpack.source_server_share_code &&
+                modpack.description.startsWith("Created from ") ? (
+                  <>
+                    Created from{" "}
+                    <button
+                      onClick={() =>
+                        navigate(`/servers/${modpack.source_server_share_code}`)
+                      }
+                      className="text-zinc-300 underline decoration-zinc-600 underline-offset-2 transition-colors hover:text-white hover:decoration-zinc-400"
+                    >
+                      {modpack.description.slice("Created from ".length)}
+                    </button>
+                  </>
+                ) : (
+                  modpack.description
+                )}
               </p>
             )}
           </div>
@@ -2652,14 +1521,52 @@ export default function ModpackBuilder() {
           <div className="pb-1">
             <AddModsPanel
               open={showAddMods}
-              modpackId={modpack.id}
               gameVersion={modpack.game_version}
               loader={modpack.loader}
               existingIds={existingIds}
-              cacheKey={code}
               onClose={() => setShowAddMods(false)}
-              setMissingDeps={setMissingDeps}
-              addToasts={addToasts}
+              onAdd={async (toAdd) => {
+                const result = await addModsBulk(
+                  modpack.id,
+                  toAdd.map((hit) => ({
+                    modrinth_project_id: hit.project_id,
+                    name: hit.title,
+                    side: deriveSide(hit),
+                    icon_url: hit.icon_url ?? null,
+                    categories: hit.categories ?? [],
+                  })),
+                );
+                return { missing: result.missing_dependencies };
+              }}
+              onBeforeAdd={(toAdd, qc) => {
+                const previousData = qc.getQueryData(["modpack", code]);
+                qc.setQueryData(["modpack", code], (old) => {
+                  if (!old) return old;
+                  const tempMods = toAdd.map((hit) => ({
+                    id: `temp-${hit.project_id}`,
+                    modrinth_project_id: hit.project_id,
+                    version_id: "",
+                    name: hit.title,
+                    side: deriveSide(hit),
+                    icon_url: hit.icon_url ?? null,
+                    version_number: null,
+                    version_type: null,
+                    filename: null,
+                    categories: hit.categories ?? [],
+                  }));
+                  return { ...old, mods: [...old.mods, ...tempMods] };
+                });
+                addToasts(toAdd.map((h) => ({ name: h.title, icon_url: h.icon_url ?? null })));
+                return { previousData };
+              }}
+              onAddSuccess={({ missing }, qc) => {
+                qc.invalidateQueries({ queryKey: ["modpack", code] });
+                qc.invalidateQueries({ queryKey: ["modpack-changelog", modpack.id] });
+                setMissingDeps(missing);
+              }}
+              onAddError={(_err, _vars, ctx, qc) => {
+                if (ctx?.previousData) qc.setQueryData(["modpack", code], ctx.previousData);
+              }}
             />
           </div>
         </div>
@@ -2878,15 +1785,28 @@ export default function ModpackBuilder() {
 
       {/* Table + Changelog side by side */}
       <div className={`flex items-start gap-4 ${showAddMods ? "mt-4" : ""}`}>
-        <div ref={leftColumnRef} className="min-w-0 flex-1">
+        <div ref={leftColumnRef} className="min-w-0 flex-1" style={{ isolation: 'isolate' }}>
           <ModTable
-            modpackId={modpack.id}
             mods={modpack.mods}
             readOnly={!!modpack.source_share_code}
             loading={isPlaceholderData}
             cacheKey={code}
             failedProjectIds={failedProjectIds}
-            addVersionToast={addVersionToast}
+            onRemoveMods={(ids) =>
+              Promise.all([...ids].map((id) => removeMod(modpack.id, id))).then(() => {
+                queryClient.invalidateQueries({ queryKey: ["modpack", code] });
+                queryClient.invalidateQueries({ queryKey: ["modpack-changelog", modpack.id] });
+              })
+            }
+            renderVersionCell={(mod) => (
+              <VersionPickerPopover
+                mod={mod}
+                modpackId={modpack.id}
+                cacheKey={code}
+                readOnly={!!modpack.source_share_code}
+                addVersionToast={addVersionToast}
+              />
+            )}
           />
 
           {/* Source changelog —" synced modpacks only, below the table */}
@@ -3052,13 +1972,7 @@ export default function ModpackBuilder() {
           ))}
         </div>
       )}
-      {toasts.length > 0 && (
-        <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end">
-          {toasts.map((t) => (
-            <Toast key={t.id} toast={t} />
-          ))}
-        </div>
-      )}
+      <ModToastsPortal toasts={toasts} />
     </div>
   );
 }

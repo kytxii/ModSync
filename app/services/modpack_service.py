@@ -40,7 +40,7 @@ async def create_modpack(db: AsyncSession, user_id: int, data: ModpackCreate) ->
     db.add(modpack)
     await db.commit()
     result = await db.execute(
-        select(Modpack).where(Modpack.id == modpack.id).options(selectinload(Modpack.mods))
+        select(Modpack).where(Modpack.id == modpack.id).options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one()
 
@@ -49,7 +49,7 @@ async def list_modpacks(db: AsyncSession, user_id: int) -> list[Modpack]:
     result = await db.execute(
         select(Modpack)
         .where(Modpack.user_id == user_id)
-        .options(selectinload(Modpack.mods))
+        .options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
         .order_by(Modpack.updated_at.desc())
     )
     return list(result.scalars().all())
@@ -59,7 +59,7 @@ async def get_modpack(db: AsyncSession, modpack_id: int, user_id: int) -> Modpac
     result = await db.execute(
         select(Modpack)
         .where(Modpack.id == modpack_id, Modpack.user_id == user_id)
-        .options(selectinload(Modpack.mods))
+        .options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one_or_none()
 
@@ -68,7 +68,7 @@ async def get_modpack_by_share_code(db: AsyncSession, code: str) -> Modpack | No
     result = await db.execute(
         select(Modpack)
         .where(Modpack.share_code == code)
-        .options(selectinload(Modpack.mods))
+        .options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one_or_none()
 
@@ -93,7 +93,7 @@ async def update_modpack(db: AsyncSession, modpack: Modpack, data: ModpackUpdate
         modpack.description = data.description
     await db.commit()
     result = await db.execute(
-        select(Modpack).where(Modpack.id == modpack.id).options(selectinload(Modpack.mods))
+        select(Modpack).where(Modpack.id == modpack.id).options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one()
 
@@ -408,7 +408,7 @@ async def import_modpack(db: AsyncSession, user_id: int, code: str, name: str, i
     result = await db.execute(
         select(Modpack)
         .where(Modpack.id == modpack.id)
-        .options(selectinload(Modpack.mods))
+        .options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one()
 
@@ -417,7 +417,7 @@ async def get_user_modpack_by_share_code(db: AsyncSession, code: str, user_id: i
     result = await db.execute(
         select(Modpack)
         .where(Modpack.share_code == code, Modpack.user_id == user_id)
-        .options(selectinload(Modpack.mods))
+        .options(selectinload(Modpack.mods), selectinload(Modpack.source_server))
     )
     return result.scalar_one_or_none()
 
