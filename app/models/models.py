@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, String, Text, ForeignKey, func, Enum
+from sqlalchemy import JSON, String, Text, ForeignKey, Index, func, text, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -21,12 +21,19 @@ class ChangelogAction(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_username_lower", text("lower(username)"), unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     google_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255))
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default=None)
+    username_changed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
+    avatar_color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default=None)
+    avatar_image: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     modpacks: Mapped[list["Modpack"]] = relationship(back_populates="user", cascade="all, delete-orphan")
