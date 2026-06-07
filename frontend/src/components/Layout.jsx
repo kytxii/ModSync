@@ -3,6 +3,22 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { loginWithGoogle, logout } from "../api/auth";
+import AvatarPicker, { avatarColor } from "./AvatarPicker";
+import UsernameField from "./UsernameField";
+
+function AvatarThumb({ user, className }) {
+  if (user.avatar_image) {
+    return <img src={user.avatar_image} alt="" className={`${className} object-cover`} />;
+  }
+  return (
+    <div
+      className={`${className} flex items-center justify-center font-semibold text-white`}
+      style={{ backgroundColor: avatarColor(user) }}
+    >
+      {(user.username ?? user.display_name)[0].toUpperCase()}
+    </div>
+  );
+}
 
 const NAV_LINKS = [
   { to: "/dashboard", label: "Dashboard" },
@@ -14,6 +30,7 @@ export default function Layout() {
   const { user, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -21,6 +38,7 @@ export default function Layout() {
     function handleClick(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
+        setEditOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -84,19 +102,8 @@ export default function Layout() {
                     onClick={() => setMenuOpen((v) => !v)}
                     className={`relative flex items-center gap-2.5 px-4 text-sm font-medium transition-colors ${menuOpen ? "text-white" : "text-zinc-400 hover:text-zinc-200"}`}
                   >
-                    {user.avatar_url ? (
-                      <img
-                        src={user.avatar_url}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
-                      />
-                    ) : (
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-xs font-semibold">
-                        {user.display_name[0]}
-                      </div>
-                    )}
-                    <span>{user.display_name}</span>
+                    <AvatarThumb user={user} className="h-7 w-7 rounded-full ring-1 ring-zinc-700 text-xs" />
+                    <span>@{user.username}</span>
                     <svg
                       width="12"
                       height="12"
@@ -117,22 +124,85 @@ export default function Layout() {
                     )}
                   </button>
 
-                  {menuOpen && (
-                    <div className="absolute right-0 top-[calc(100%+1px)] z-50 w-56 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50">
-                      <div className="border-b border-zinc-800 px-4 py-3">
-                        <p className="truncate text-sm font-semibold text-white">{user.display_name}</p>
-                        <p className="truncate text-xs text-zinc-500 mt-0.5">{user.email}</p>
+                  <div
+                    aria-hidden={!menuOpen}
+                    className={`absolute right-0 top-[calc(100%+1px)] z-50 w-80 origin-top-right overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl shadow-black/50 transition-all duration-200 ease-out ${
+                      menuOpen
+                        ? "opacity-100 scale-100 translate-y-0"
+                        : "pointer-events-none opacity-0 scale-95 -translate-y-1.5"
+                    }`}
+                  >
+                      <div className="relative overflow-hidden border-b border-zinc-800 px-4 py-4">
+                        <div className="pointer-events-none absolute inset-x-0 -top-10 h-20 bg-emerald-500/10 blur-2xl" />
+                        <div className="relative flex items-center gap-3">
+                          <AvatarThumb user={user} className="h-11 w-11 rounded-full ring-1 ring-zinc-700 text-sm" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white">@{user.username}</p>
+                            <p className="truncate text-xs text-zinc-500 mt-0.5">{user.email}</p>
+                          </div>
+                        </div>
                       </div>
+
+                      {editOpen ? (
+                        <div key="edit" className="border-b border-zinc-800 bg-zinc-950/40 p-4 [animation:menu-panel-in_180ms_ease-out]">
+                          <button
+                            onClick={() => setEditOpen(false)}
+                            className="mb-4 flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-300"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                              <path d="M7 2L3 5.5L7 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            Back
+                          </button>
+
+                          <div className="space-y-5">
+                            <div>
+                              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Avatar</p>
+                              <div className="flex justify-center">
+                                <AvatarPicker user={user} size="h-16 w-16" />
+                              </div>
+                            </div>
+                            <div>
+                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Username</p>
+                              <UsernameField currentUsername={user.username} usernameChangedAt={user.username_changed_at} />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key="account" className="border-b border-zinc-800 p-1.5 [animation:menu-panel-in_180ms_ease-out]">
+                          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Account</p>
+                          <button
+                            onClick={() => setEditOpen(true)}
+                            className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                              Edit profile
+                            </span>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-zinc-600">
+                              <path d="M3.5 2L7 5L3.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+
                       <div className="p-1.5">
                         <button
                           onClick={handleLogout}
-                          className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
                         >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                          </svg>
                           Sign out
                         </button>
                       </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               ) : (
                 <button
@@ -190,20 +260,9 @@ export default function Layout() {
                   {user ? (
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2.5 px-3 py-2">
-                        {user.avatar_url ? (
-                          <img
-                            src={user.avatar_url}
-                            alt=""
-                            referrerPolicy="no-referrer"
-                            className="h-6 w-6 rounded-full ring-1 ring-zinc-700"
-                          />
-                        ) : (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-xs font-semibold">
-                            {user.display_name[0]}
-                          </div>
-                        )}
+                        <AvatarThumb user={user} className="h-6 w-6 rounded-full ring-1 ring-zinc-700 text-xs" />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-white">{user.display_name}</p>
+                          <p className="truncate text-sm font-medium text-white">@{user.username}</p>
                           <p className="truncate text-xs text-zinc-500">{user.email}</p>
                         </div>
                       </div>
