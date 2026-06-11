@@ -237,3 +237,8 @@ docs/agents/triage-labels.md
 docs/agents/issue-tracker.md
 handoff.md
 PLAN.md
+DESIGN.json
+DESIGN.md
+PRODUCT.md
+.graphify_python
+.claude/settings.json
