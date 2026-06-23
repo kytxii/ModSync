@@ -5,7 +5,7 @@ import httpx
 from app.schemas.mod import ModSearchHit, ModSearchResponse
 
 MODRINTH_BASE_URL = "https://api.modrinth.com/v2"
-_HEADERS = {"User-Agent": "modsync/1.0 (github.com/kytxii/modsync)"}
+_HEADERS = {"User-Agent": "beacon/1.0 (github.com/kytxii/beacon)"}
 
 
 async def get_categories() -> list[dict]:

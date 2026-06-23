@@ -3,7 +3,7 @@ import time
 import httpx
 
 FABRIC_BASE = "https://meta.fabricmc.net/v2"
-_HEADERS = {"User-Agent": "modsync/1.0 (github.com/kytxii/modsync)"}
+_HEADERS = {"User-Agent": "beacon/1.0 (github.com/kytxii/beacon)"}
 _TTL = 3600  # 1 hour
 
 _cache: dict[str, tuple[float, list[str]]] = {}

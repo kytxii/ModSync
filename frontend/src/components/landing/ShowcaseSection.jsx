@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import ScrollReveal from "./ScrollReveal";
 
 const SHOWCASE_ITEMS = [
@@ -7,7 +9,7 @@ const SHOWCASE_ITEMS = [
     slug: "analyzer",
     title: "Mod Analyzer",
     description:
-      "Upload your mods folder and get instant compatibility reports, conflict detection, and update checks against the latest releases.",
+      "Drop your mods folder and get a full breakdown of every mod, version, and compatibility issue in seconds.",
     image: "/landing/analyzer.png",
     alt: "Mod Analyzer results showing compatibility and update status for a mod list",
   },
@@ -16,7 +18,7 @@ const SHOWCASE_ITEMS = [
     slug: "modpack-builder",
     title: "Modpack Builder",
     description:
-      "Search thousands of mods, build a named modpack, and share it with a single link. Friends can export straight to .zip.",
+      "Assemble a modpack and share it with a single code. Anyone can import it instantly, no files attached.",
     image: "/landing/modpack-builder.png",
     alt: "Modpack Builder interface for searching and assembling a shareable modpack",
   },
@@ -25,7 +27,7 @@ const SHOWCASE_ITEMS = [
     slug: "servers",
     title: "Servers",
     description:
-      "Configure a self-hosted server from scratch — version, loader, mods, and properties — then export a ready-to-run pack or manage it live.",
+      "Add a server and keep tabs on its mods, live player count, and uptime. Everything you need at a glance.",
     image: "/landing/servers.png",
     alt: "Servers tab showing a server builder with mod list and live status",
   },
@@ -33,31 +35,64 @@ const SHOWCASE_ITEMS = [
 
 function ShowcaseShot({ src, alt }) {
   const [failed, setFailed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="aspect-[16/10] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-      {failed ? (
-        <div className="flex h-full w-full items-center justify-center text-sm text-zinc-600">
-          Feature coming soon.
-        </div>
-      ) : (
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
-        />
+    <>
+      <div
+        onClick={() => !failed && setExpanded(true)}
+        className="aspect-[16/10] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 cursor-pointer transition-transform duration-300 hover:scale-[1.025]"
+      >
+        {failed ? (
+          <div className="flex h-full w-full items-center justify-center text-sm text-zinc-600">
+            Feature coming soon.
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            className="h-full w-full object-cover"
+          />
+        )}
+      </div>
+
+      {createPortal(
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-8 cursor-zoom-out"
+              onClick={() => setExpanded(false)}
+            >
+              <motion.img
+                initial={{ scale: 0.92, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.92, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                src={src}
+                alt={alt}
+                className="max-w-full max-h-full rounded-xl border border-zinc-700 shadow-2xl object-contain cursor-default"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
 export default function ShowcaseSection() {
   return (
-    <section className="mt-28 w-full max-w-5xl">
+    <section className="mt-28 w-full max-w-7xl">
       <ScrollReveal>
-        <h2 className="text-center font-display text-2xl font-medium tracking-tight sm:text-3xl">
+        <h2 className="text-center font-body text-2xl font-bold tracking-tight sm:text-3xl">
           See it <span className="text-emerald-400">in action.</span>
         </h2>
       </ScrollReveal>
@@ -72,7 +107,7 @@ export default function ShowcaseSection() {
           >
             <ScrollReveal
               direction={i % 2 === 1 ? "right" : "left"}
-              className="w-full md:w-1/2"
+              className="w-full md:w-3/5"
             >
               <ShowcaseShot src={item.image} alt={item.alt} />
             </ScrollReveal>
@@ -80,13 +115,9 @@ export default function ShowcaseSection() {
             <ScrollReveal
               direction={i % 2 === 1 ? "left" : "right"}
               delay={0.1}
-              className="w-full text-center md:w-1/2 md:text-left"
+              className="w-full text-center md:w-2/5 md:text-left"
             >
-              <span className="font-display text-xs text-zinc-600">
-                {item.index} <span className="text-zinc-700">/</span>{" "}
-                {item.slug}
-              </span>
-              <h3 className="mt-2 font-body text-xl font-semibold text-white">
+              <h3 className="font-body text-xl font-semibold text-white">
                 {item.title}
               </h3>
               <p className="mt-2 font-body text-zinc-400">{item.description}</p>

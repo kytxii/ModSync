@@ -437,7 +437,7 @@ async def build_zip(db: AsyncSession, modpack_id: int, user_id: int) -> tuple[by
     mods = await resolve_mods(db, modpack)
     sem = asyncio.Semaphore(5)
     failed: list[str] = []
-    _headers = {"User-Agent": "modsync/1.0 (github.com/kytxii/modsync)"}
+    _headers = {"User-Agent": "beacon/1.0 (github.com/kytxii/beacon)"}
 
     async def fetch_mod(client: httpx.AsyncClient, mod: ModpackMod) -> tuple[str, bytes] | None:
         async with sem:

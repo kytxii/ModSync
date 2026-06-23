@@ -2739,7 +2739,7 @@ export default function ServerBuilder() {
                 Create a client modpack?
               </p>
               <p className="mb-4 text-xs text-zinc-500">
-                Generates a ModSync modpack from this server's client-compatible
+                Generates a Beacon modpack from this server's client-compatible
                 mods so players can install them with one click.
               </p>
               <div className="flex gap-2">

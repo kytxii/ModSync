@@ -36,7 +36,7 @@ def _process_icon(data: bytes) -> str:
     encoded = base64.b64encode(buf.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
-_HEADERS = {"User-Agent": "modsync/1.0 (github.com/kytxii/modsync)"}
+_HEADERS = {"User-Agent": "beacon/1.0 (github.com/kytxii/beacon)"}
 _STATUS_HEADERS = _HEADERS
 _FABRIC_META = "https://meta.fabricmc.net"
 _MODRINTH_API = "https://api.modrinth.com/v2"

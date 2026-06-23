@@ -63,7 +63,7 @@ function TerminalLine() {
 
   return (
     <div className="inline-flex items-center gap-2 font-display text-xs text-emerald-400 sm:text-sm">
-      <span className="text-zinc-600">~/modsync$</span>
+      <span className="text-zinc-600">~/beacon$</span>
       <span>{text}</span>
       <span
         aria-hidden="true"

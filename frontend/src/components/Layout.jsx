@@ -93,47 +93,16 @@ export default function Layout() {
     window.location.href = "/";
   }
 
+  const isLanding = location.pathname === "/";
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      <nav className="border-b border-zinc-800 bg-zinc-950">
+      <nav className={`border-b border-zinc-800 bg-zinc-950 ${isLanding ? "hidden" : ""}`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           {/* Logo */}
           <NavLink to="/" className="flex items-center gap-3 shrink-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" fill="white" />
-                <rect
-                  x="9"
-                  y="1"
-                  width="6"
-                  height="6"
-                  rx="1.5"
-                  fill="white"
-                  opacity="0.7"
-                />
-                <rect
-                  x="1"
-                  y="9"
-                  width="6"
-                  height="6"
-                  rx="1.5"
-                  fill="white"
-                  opacity="0.7"
-                />
-                <rect
-                  x="9"
-                  y="9"
-                  width="6"
-                  height="6"
-                  rx="1.5"
-                  fill="white"
-                  opacity="0.4"
-                />
-              </svg>
-            </div>
-            <span className="text-lg font-bold tracking-tight text-white">
-              ModSync
-            </span>
+            <img src="/beacon-logo.png" alt="Beacon" className="h-8 w-8 rounded-lg" />
+            <span className="text-lg font-bold tracking-tight text-white">Beacon</span>
           </NavLink>
 
           {/* Nav links — desktop */}
@@ -280,7 +249,7 @@ export default function Layout() {
               ) : (
                 <button
                   onClick={loginWithGoogle}
-                  className="hidden md:block rounded-lg bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_10px_rgba(16,185,129,0.2)] transition-all hover:bg-emerald-400 active:scale-95"
+                  className="hidden md:block rounded-lg bg-emerald-500 px-5 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-600 active:scale-95 [text-shadow:0_1px_6px_rgba(0,0,0,0.6)]"
                 >
                   Sign in with Google
                 </button>

@@ -79,6 +79,26 @@ html::-webkit-scrollbar {
   }
 }
 
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 80%;
+  height: 100%;
+  background: linear-gradient(110deg, transparent 15%, rgba(255,255,255,0.45) 50%, transparent 85%);
+  transform: skewX(-15deg);
+  transition: left 0.4s ease;
+  pointer-events: none;
+}
+.btn-shimmer:hover::before {
+  left: 160%;
+}
+
 .scrollbar-dark {
   scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;

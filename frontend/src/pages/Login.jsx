@@ -9,7 +9,7 @@ export default function Login() {
       </div>
 
       <h1 className="mt-6 text-4xl font-bold tracking-tight">
-        Welcome to <span className="text-emerald-400">ModSync</span>
+        Welcome to <span className="text-emerald-400">Beacon</span>
       </h1>
       <p className="mt-3 max-w-sm text-zinc-400">
         Sign in with your Google account to access your modpacks, analyze mods, and more.

@@ -244,3 +244,6 @@ PRODUCT.md
 ROADMAP.md
 .claude/settings.json
 .graphify_python
+AGENTS.md
+APP_PLAN.md
+.codex/hooks.json
